@@ -278,7 +278,7 @@ const Orders = () => {
               <!-- Customer Details -->
               <table class="customer-info">
                   <tr>
-                      <td><strong>Name:</strong><span class="detail-value">${order.customer || 'Unknown Customer'}</span></td>
+                      <td><strong>Name:</strong><span class="detail-value">${order.customer?.name || order.customer || 'Unknown Customer'}</span></td>
                       <td><strong>Bill No.:</strong><span class="detail-value">${order.id ? order.id.substring(0, 5) : 'N/A'}</span></td>
                   </tr>
                   <tr>
@@ -403,10 +403,12 @@ const Orders = () => {
 
   const filteredOrders = orders.filter(order => {
     const searchLower = searchTerm.toLowerCase();
+    const customerName = order.customer?.name || order.customer || '';
+    const customerPhone = order.customer?.phone || order.customer_phone || '';
     const matchesSearch = 
       (order.id && order.id.toLowerCase().includes(searchLower)) ||
-      (order.customer && order.customer.toLowerCase().includes(searchLower)) ||
-      (order.customer_phone && order.customer_phone.includes(searchTerm));
+      (customerName && customerName.toLowerCase().includes(searchLower)) ||
+      (customerPhone && customerPhone.includes(searchTerm));
     const matchesStatus = filterStatus === 'All' || order.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -499,7 +501,7 @@ const Orders = () => {
                 <div key={order.id} className="border border-gray-200 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-800">{order.customer || 'Unknown Customer'}</h3>
+                      <h3 className="text-lg font-bold text-gray-800">{order.customer?.name || order.customer || 'Unknown Customer'}</h3>
                       <p className="text-sm text-blue-600 font-medium">Order ID: {order.id ? order.id.substring(0, 5) : 'N/A'}</p>
                     </div>
                     <div className="min-w-[120px]">
@@ -585,10 +587,10 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedOrder, setEditedOrder] = useState({
     ...order,
-    customer_name: order.customer || '',
-    customer_phone: order.customer_phone || '',
-    customer_email: order.customer_email || '',
-    customer_address: order.customer_address || '',
+    customer_name: order.customer?.name || order.customer || '',
+    customer_phone: order.customer?.phone || order.customer_phone || '',
+    customer_email: order.customer?.email || order.customer_email || '',
+    customer_address: order.customer?.address || order.customer_address || '',
     items: order.items || [],
     measurements: order.measurements || []
   });
@@ -718,7 +720,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                 <button 
                   onClick={() => {
                     setIsEditing(false);
-                    setEditedOrder({ ...order, customer_name: order.customer || '' });
+                    setEditedOrder({ ...order, customer_name: order.customer?.name || order.customer || '' });
                   }}
                   className="bg-gray-600 text-white font-bold py-2 px-6 rounded hover:bg-gray-700 transition duration-300 ease-in-out"
                 >
@@ -773,7 +775,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                       className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <p className="text-gray-900 font-medium">{currentOrder.customer || 'Unknown Customer'}</p>
+                    <p className="text-gray-900 font-medium">{currentOrder.customer?.name || currentOrder.customer || 'Unknown Customer'}</p>
                   )}
                 </div>
                 
@@ -787,7 +789,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                       className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <p className="text-gray-900">{currentOrder.customer_phone || 'N/A'}</p>
+                    <p className="text-gray-900">{currentOrder.customer?.phone || currentOrder.customer_phone || 'N/A'}</p>
                   )}
                 </div>
                 
@@ -801,7 +803,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                       className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <p className="text-gray-900">{currentOrder.customer_email || 'N/A'}</p>
+                    <p className="text-gray-900">{currentOrder.customer?.email || currentOrder.customer_email || 'N/A'}</p>
                   )}
                 </div>
                 
@@ -815,7 +817,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                       className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
-                    <p className="text-gray-900">{currentOrder.customer_address || 'N/A'}</p>
+                    <p className="text-gray-900">{currentOrder.customer?.address || currentOrder.customer_address || 'N/A'}</p>
                   )}
                 </div>
               </div>
@@ -1110,7 +1112,7 @@ const PrintPreviewModal = ({ order, onClose, onPrint }) => {
               <div>
                 <strong>Name:</strong>
                 <span className="border-b border-dotted border-black ml-2 px-2">
-                  {order.customer || 'Unknown Customer'}
+                  {order.customer?.name || order.customer || 'Unknown Customer'}
                 </span>
               </div>
               <div>

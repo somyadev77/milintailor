@@ -15,6 +15,16 @@ function Customers() {
     fetchCustomers();
   }, []);
 
+  // Refresh data when component becomes visible (user returns from edit)
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchCustomers();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredCustomers(customers);
@@ -269,13 +279,13 @@ function Customers() {
                       <span>View</span>
                     </Link>
                     <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => console.log('Edit', customer.id)}
+                      <Link
+                        to={`/customers/edit/${customer.id}`}
                         className="flex items-center space-x-1 text-indigo-600 hover:text-indigo-800 font-medium transition-colors duration-200"
                       >
                         <FaEdit />
                         <span>Edit</span>
-                      </button>
+                      </Link>
                       <button
                         onClick={() => handleDelete(customer.id, customer.name)}
                         className="flex items-center space-x-1 text-red-600 hover:text-red-800 font-medium transition-colors duration-200"

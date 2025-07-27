@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import NewCustomer from './pages/NewCustomer';
 import CustomerView from './pages/CustomerView';
+import EditMeasurement from './pages/EditMeasurement';
 import Orders from './pages/Orders';
 import CreateOrder from './pages/CreateOrder'; // Change from NewOrder to CreateOrder
 import MeasurementSettings from './pages/MeasurementSettings';
@@ -59,6 +60,30 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CustomerView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/customers/edit/:id"
+              element={
+                <ProtectedRoute>
+                  <NewCustomer />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/customers/:customerId/measurements/:measurementId/edit"
+              element={
+                <ProtectedRoute>
+                  <EditMeasurement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/customers/:customerId/measurements/new"
+              element={
+                <ProtectedRoute>
+                  <EditMeasurement />
                 </ProtectedRoute>
               }
             />

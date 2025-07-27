@@ -18,17 +18,7 @@ const CreateOrder = () => {
   const [measurementTemplates, setMeasurementTemplates] = useState([]);
   // eslint-disable-next-line no-unused-vars
   const [defaultMeasurements, setDefaultMeasurements] = useState({});
-  const [universalMeasurements, setUniversalMeasurements] = useState({
-    chest: { label: 'Chest', value: '', unit: 'inches' },
-    waist: { label: 'Waist', value: '', unit: 'inches' },
-    hip: { label: 'Hip', value: '', unit: 'inches' },
-    shoulder: { label: 'Shoulder', value: '', unit: 'inches' },
-    sleeve_length: { label: 'Sleeve Length', value: '', unit: 'inches' },
-    neck: { label: 'Neck', value: '', unit: 'inches' },
-    height: { label: 'Height', value: '', unit: 'inches' },
-    inseam: { label: 'Inseam', value: '', unit: 'inches' },
-    outseam: { label: 'Outseam', value: '', unit: 'inches' }
-  });
+  const [universalMeasurements, setUniversalMeasurements] = useState({});
   const [customMeasurements, setCustomMeasurements] = useState([]);
   const [newCustomMeasurement, setNewCustomMeasurement] = useState({ name: '', value: '', unit: 'inches' });
   const [deliveryDate, setDeliveryDate] = useState('');
@@ -51,8 +41,33 @@ const CreateOrder = () => {
     };
 
     const loadMeasurementTemplates = async () => {
+      // Load default templates first
+      await measurementTemplateService.getDefaultTemplates();
       const templates = await measurementTemplateService.getAll();
       setMeasurementTemplates(templates);
+      
+      // Create universal measurements from all template fields
+      const allUniversalFields = {};
+      templates.forEach(template => {
+        if (template && template.fields && Array.isArray(template.fields)) {
+          template.fields.forEach(field => {
+            if (field && field.name && field.label) {
+              // Avoid duplicates by using field name as key
+              if (!allUniversalFields[field.name]) {
+                allUniversalFields[field.name] = {
+                  label: field.label,
+                  value: '',
+                  unit: field.unit || 'inches',
+                  required: field.required || false
+                };
+              }
+            }
+          });
+        }
+      });
+      
+      console.log('All universal measurement fields:', allUniversalFields);
+      setUniversalMeasurements(allUniversalFields);
     };
 
     loadCustomers();
@@ -550,25 +565,62 @@ const CreateOrder = () => {
         <p className="text-sm text-gray-600 mb-4">These measurements will be saved for the customer and can be used across all orders.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {Object.entries(universalMeasurements).map(([field, measurement]) => (
-            <div key={field} className="flex flex-col space-y-1">
-              <label className="text-sm font-medium text-gray-700">
-                {measurement.label}
-              </label>
+          {Object.entries(universalMeasurements).map(([field, measurement]) => {
+            const hasValue = measurement.value && measurement.value !== '' && measurement.value !== '0';
+            return (
+              <div key={field} className={`flex flex-col space-y-1 ${hasValue ? 'bg-green-50 border border-green-200 rounded-lg p-3' : ''}`}>
+                <label className="text-sm font-medium text-gray-700">
+                  <div className="flex items-center justify-between">
+                    <span>
+                      {measurement.label} {measurement.required && <span className="text-red-500">*</span>}
+                      <span className="text-gray-500 ml-1">({measurement.unit})</span>
+                    </span>
+                    {hasValue && (
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                        ✓ Filled
+                      </span>
+                    )}
+                  </div>
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={measurement.value}
+                    onChange={(e) => handleUniversalMeasurementChange(field, e.target.value)}
+                    className={`flex-1 p-2 border rounded text-sm min-w-0 ${
+                      hasValue 
+                        ? 'border-green-300 bg-green-50 font-semibold'
+                        : 'border-gray-300 bg-gray-50'
+                    }`}
+                    placeholder={hasValue ? measurement.value : '0.0 (empty)'}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Measurement Summary */}
+        {Object.keys(universalMeasurements).length > 0 && (
+          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 mb-6">
+            <h3 className="font-semibold text-gray-800 mb-2">Universal Measurements Summary</h3>
+            <div className="flex items-center space-x-6 text-sm">
               <div className="flex items-center space-x-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={measurement.value}
-                  onChange={(e) => handleUniversalMeasurementChange(field, e.target.value)}
-                  className="flex-1 p-2 border rounded text-sm min-w-0"
-                  placeholder="0.0"
-                />
-                <span className="text-xs text-gray-500 whitespace-nowrap">{measurement.unit}</span>
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span>Filled: {Object.values(universalMeasurements).filter(m => m.value && m.value !== '' && m.value !== '0').length}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+                <span>Empty: {Object.values(universalMeasurements).filter(m => !m.value || m.value === '' || m.value === '0').length}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <span>Total: {Object.keys(universalMeasurements).length}</span>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
         {/* Custom Measurements */}
         <div className="border-t pt-4">

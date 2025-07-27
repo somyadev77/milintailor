@@ -79,6 +79,35 @@ export const measurementTemplateService = {
     }
   },
 
+  // Get all unique fields from all templates
+  async getAllUniqueFields() {
+    try {
+      const templates = await this.getAll();
+      const fieldsMap = new Map();
+      
+      // Collect all fields from all templates
+      templates.forEach(template => {
+        if (template.fields && Array.isArray(template.fields)) {
+          template.fields.forEach(field => {
+            if (field.name && !fieldsMap.has(field.name)) {
+              fieldsMap.set(field.name, {
+                name: field.name,
+                label: field.label || field.name,
+                unit: field.unit || 'inches',
+                required: false // Make all fields optional for order creation
+              });
+            }
+          });
+        }
+      });
+      
+      return Array.from(fieldsMap.values()).sort((a, b) => a.label.localeCompare(b.label));
+    } catch (error) {
+      console.error('Error getting all unique fields:', error);
+      return [];
+    }
+  },
+
   // Get default templates (create some basic ones if none exist)
   async getDefaultTemplates() {
     try {

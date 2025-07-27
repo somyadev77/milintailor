@@ -8,18 +8,23 @@ function CustomerView() {
   const { id } = useParams();
   const [customer, setCustomer] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchCustomerDetails = async () => {
+    try {
+      setLoading(true);
+      const customerData = await customerService.getWithMeasurements(id);
+      const customerOrders = await orderService.getByCustomer(id);
+      setCustomer(customerData);
+      setOrders(customerOrders);
+    } catch (error) {
+      console.error('Error fetching customer details:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchCustomerDetails = async () => {
-      try {
-        const customerData = await customerService.getWithMeasurements(id);
-        const customerOrders = await orderService.getByCustomer(id);
-        setCustomer(customerData);
-        setOrders(customerOrders);
-      } catch (error) {
-        console.error('Error fetching customer details:', error);
-      }
-    };
     fetchCustomerDetails();
   }, [id]);
 
@@ -31,21 +36,50 @@ function CustomerView() {
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-4">Customer Details</h1>
       <div className="mb-6">
-        <h2 className="text-2xl font-semibold">{customer.name}</h2>
+        <div className="flex justify-between items-start mb-4">
+          <h2 className="text-2xl font-semibold">{customer.name}</h2>
+          <Link
+            to={`/customers/edit/${customer.id}`}
+            className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+          >
+            <FaEdit />
+            <span>Edit Customer</span>
+          </Link>
+        </div>
         <p><strong>Phone:</strong> {customer.phone}</p>
         <p><strong>Email:</strong> {customer.email || 'N/A'}</p>
         <p><strong>Address:</strong> {customer.address || 'N/A'}</p>
       </div>
 
       <div className="mb-6">
-        <h3 className="text-xl font-semibold mb-2">Measurements</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold">Measurements</h3>
+          <Link
+            to={`/customers/${id}/measurements/new`}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+          >
+            <FaPlus />
+            <span>Add Measurement</span>
+          </Link>
+        </div>
         {customer.measurements && customer.measurements.length > 0 ? (
           <div className="space-y-4">
             {customer.measurements.map((measurement, index) => (
               <div key={measurement.id || index} className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-semibold text-lg mb-2">
-                  {measurement.template_name || `Measurement Set ${index + 1}`}
-                </h4>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="font-semibold text-lg">
+                    {measurement.template_name || `Measurement Set ${index + 1}`}
+                  </h4>
+                  {measurement.id && (
+                    <Link
+                      to={`/customers/${id}/measurements/${measurement.id}/edit`}
+                      className="flex items-center space-x-1 text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors duration-200"
+                    >
+                      <FaEdit />
+                      <span>Edit</span>
+                    </Link>
+                  )}
+                </div>
                 {measurement.data && typeof measurement.data === 'object' ? (
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     {Object.entries(measurement.data).map(([key, value]) => {
@@ -76,7 +110,10 @@ function CustomerView() {
             ))}
           </div>
         ) : (
-          <p>No measurements available.</p>
+          <div className="text-center py-8">
+            <p className="text-gray-500 mb-4">No measurements available for this customer.</p>
+            <p className="text-sm text-gray-400">Click "Add Measurement" above to create the first measurement set.</p>
+          </div>
         )}
       </div>
 
