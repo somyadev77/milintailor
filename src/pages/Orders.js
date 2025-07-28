@@ -684,25 +684,25 @@ const handleDownloadPDF = async (order) => {
   };
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800">Orders</h1>
+    <div className="p-4 sm:p-6">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-gray-800">Orders</h1>
 
       {/* Header with Search, Filter, and Create Button */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 space-y-4 md:space-y-0 md:space-x-4">
-        <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-4 w-full md:w-auto">
-          <div className="relative w-full md:w-80">
+      <div className="flex flex-col space-y-4 mb-6">
+        <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+          <div className="relative flex-1">
             <input
               type="text"
               placeholder="Search by Order ID or Customer Name..."
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
             <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
           </div>
-          <div className="w-full md:w-48">
+          <div className="w-full sm:w-48">
             <select
-              className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -713,7 +713,7 @@ const handleDownloadPDF = async (order) => {
             </select>
           </div>
         </div>
-        <Link to="/orders/new" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition duration-200 flex items-center">
+        <Link to="/orders/new" className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-200 flex items-center justify-center w-full sm:w-auto sm:self-start">
           <FaPlus className="mr-2" /> Create New Order
         </Link>
       </div>
@@ -952,19 +952,24 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-y-auto print-area">
-        {/* Header - Hidden on Print */}
-        <div className="flex justify-between items-center p-6 border-b print-hide">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-              currentOrder.status === 'Completed' ? 'bg-green-200 text-green-800' :
-              currentOrder.status === 'In-Progress' ? 'bg-yellow-200 text-yellow-800' :
-              'bg-red-200 text-red-800'
-            }`}>
-              {currentOrder.status || 'Pending'}
-            </span>
+        {/* Header - Mobile Responsive */}
+        <div className="flex flex-col space-y-4 p-4 sm:p-6 border-b print-hide">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <h2 className="text-lg sm:text-2xl font-bold text-gray-800">Order Details</h2>
+              <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
+                currentOrder.status === 'Completed' ? 'bg-green-200 text-green-800' :
+                currentOrder.status === 'In-Progress' ? 'bg-yellow-200 text-yellow-800' :
+                'bg-red-200 text-red-800'
+              }`}>
+                {currentOrder.status || 'Pending'}
+              </span>
+            </div>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800 p-2">
+              <FaTimes size={20} />
+            </button>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             {isEditing ? (
               <>
                 <button 
@@ -1009,9 +1014,6 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                 </button>
               </>
             )}
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-              <FaTimes size={24} />
-            </button>
           </div>
         </div>
 
@@ -1317,54 +1319,56 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b bg-gray-50">
-          <h2 className="text-2xl font-bold text-gray-800">Print Preview</h2>
-          <div className="flex gap-3">
+        {/* Header - Mobile Responsive */}
+        <div className="flex flex-col space-y-4 p-4 sm:p-6 border-b bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg sm:text-2xl font-bold text-gray-800">Print Preview</h2>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800 p-2">
+              <FaTimes size={20} />
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button 
-              className="bg-blue-600 text-white font-bold py-2 px-6 rounded hover:bg-blue-700 transition duration-300 ease-in-out flex items-center"
+              className="bg-blue-600 text-white font-bold py-2 px-6 rounded hover:bg-blue-700 transition duration-300 ease-in-out flex items-center justify-center"
               onClick={onPrint}
             >
               <FaPrint className="mr-2" /> Print Receipt
             </button>
             <button 
-              className="bg-green-600 text-white font-bold py-2 px-6 rounded hover:bg-green-700 transition duration-300 ease-in-out flex items-center"
+              className="bg-green-600 text-white font-bold py-2 px-6 rounded hover:bg-green-700 transition duration-300 ease-in-out flex items-center justify-center"
               onClick={() => onDownloadPDF(order)}
             >
               <FaFilePdf className="mr-2" /> Download PDF
-            </button>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-              <FaTimes size={24} />
             </button>
           </div>
         </div>
 
         {/* Receipt Preview */}
-        <div className="p-6">
-          <div className="border-4 border-double border-red-900 p-6 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+        <div className="p-3 sm:p-6">
+          <div className="border-2 sm:border-4 border-double border-red-900 p-3 sm:p-6 bg-white overflow-x-auto" style={{ fontFamily: 'Arial, sans-serif' }}>
             {/* Header */}
             <div className="border-b-2 border-red-900 pb-4 mb-5">
-              <div className="flex items-center">
-                <div className="w-16 h-16 mr-4">
+              <div className="flex flex-col sm:flex-row items-center text-center sm:text-left">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 mb-2 sm:mb-0 sm:mr-4">
                   <img src="/logo.jpg" alt="Milin Tailor Logo" className="w-full h-full object-contain rounded" />
                 </div>
                 <div className="flex-1 text-center">
-                  <h1 className="text-3xl font-bold text-red-900" style={{ fontFamily: 'serif' }}>
-                    MILIN TAILOR <span className="text-sm font-normal">Since 1965</span>
+                  <h1 className="text-xl sm:text-3xl font-bold text-red-900" style={{ fontFamily: 'serif' }}>
+                    MILIN TAILOR <span className="text-xs sm:text-sm font-normal">Since 1965</span>
                   </h1>
-                  <p className="italic font-bold text-lg mt-1" style={{ fontFamily: 'serif' }}>
+                  <p className="italic font-bold text-sm sm:text-lg mt-1" style={{ fontFamily: 'serif' }}>
                     We Will Make You Sew Happy !
                   </p>
-                  <p className="text-sm mt-2">
+                  <p className="text-xs sm:text-sm mt-2">
                     Shop No. 2, Shiv Sai Complex, Opp. Triveni Resi.,<br/>
                     Near S.R.P. Group No. 1 (East Gate), Navapura, Vadodara.
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold">M. 94263 69847</p>
-                  <div className="bg-red-900 text-white px-2 py-1 mt-2 font-bold text-sm rounded">
+                <div className="text-center sm:text-right mt-2 sm:mt-0">
+                  <p className="font-bold text-sm sm:text-base">M. 94263 69847</p>
+                  <div className="bg-red-900 text-white px-2 py-1 mt-2 font-bold text-xs sm:text-sm rounded">
                     SUNDAY CLOSED
                   </div>
                 </div>
@@ -1372,78 +1376,120 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
             </div>
 
             {/* Customer Details */}
-            <div className="grid grid-cols-2 gap-4 mb-5 text-lg">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 mb-5 text-sm sm:text-lg">
+              <div className="mb-2">
                 <strong>Name:</strong>
-                <span className="ml-2 px-2 pb-2 inline-block min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
+                <span className="ml-1 sm:ml-2 px-1 sm:px-2 pb-1 sm:pb-2 inline-block min-w-[120px] sm:min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
                   {order.customer?.name || order.customer || 'Unknown Customer'}
                 </span>
               </div>
-              <div>
+              <div className="mb-2">
                 <strong>Bill No.:</strong>
-                <span className="ml-2 px-2 pb-2 inline-block min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
+                <span className="ml-1 sm:ml-2 px-1 sm:px-2 pb-1 sm:pb-2 inline-block min-w-[120px] sm:min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
                   {order.id ? order.id.substring(0, 5) : 'N/A'}
                 </span>
               </div>
-              <div>
+              <div className="mb-2">
                 <strong>Delivery Date:</strong>
-                <span className="ml-2 px-2 pb-2 inline-block min-w-[200px]" style={{borderBottom: '1px dotted black'}}>
+                <span className="ml-1 sm:ml-2 px-1 sm:px-2 pb-1 sm:pb-2 inline-block min-w-[140px] sm:min-w-[200px]" style={{borderBottom: '1px dotted black'}}>
                   {formatDate(order.delivery_date)}
                 </span>
               </div>
-              <div>
+              <div className="mb-2">
                 <strong>Order Date:</strong>
-                <span className="ml-2 px-2 pb-2 inline-block min-w-[200px]" style={{borderBottom: '1px dotted black', marginLeft: '28px'}}>
+                <span className="ml-1 sm:ml-2 px-1 sm:px-2 pb-1 sm:pb-2 inline-block min-w-[140px] sm:min-w-[200px]" style={{borderBottom: '1px dotted black'}}>
                   {formatDate(order.order_date)}
                 </span>
               </div>
             </div>
 
-            {/* Order Items Table */}
-            <table className="w-full border border-red-900 mt-5">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="border border-red-900 p-2 text-center w-12">Nos.</th>
-                  <th className="border border-red-900 p-2 text-left">Details</th>
-                  <th className="border border-red-900 p-2 text-center w-16">Qty</th>
-                  <th className="border border-red-900 p-2 text-right w-24">Rate</th>
-                  <th className="border border-red-900 p-2 text-right w-24">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
+            {/* Order Items - Responsive Design */}
+            <div className="overflow-x-auto mt-5">
+              {/* Mobile Card View (sm and below) */}
+              <div className="block sm:hidden space-y-3">
                 {order.items && order.items.length > 0 ? (
                   order.items.map((item, index) => {
                     const quantity = item.quantity || 1;
                     const rate = item.price || 0;
                     const amount = quantity * rate;
                     return (
-                      <tr key={index}>
-                        <td className="border border-red-900 p-2 text-center">{index + 1}</td>
-                        <td className="border border-red-900 p-2">{item.product_name || item.name || 'N/A'}</td>
-                        <td className="border border-red-900 p-2 text-center">{quantity}</td>
-                        <td className="border border-red-900 p-2 text-right">₹ {rate.toLocaleString()}</td>
-                        <td className="border border-red-900 p-2 text-right">₹ {amount.toLocaleString()}</td>
-                      </tr>
+                      <div key={index} className="border-2 border-red-900 rounded p-3 bg-gray-50">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-sm font-bold text-red-900">#{index + 1}</span>
+                          <span className="text-lg font-bold text-red-900">₹ {amount.toLocaleString()}</span>
+                        </div>
+                        <div className="text-base font-semibold mb-2">{item.product_name || item.name || 'N/A'}</div>
+                        <div className="flex justify-between text-sm">
+                          <div>
+                            <span className="text-gray-600">Qty: </span>
+                            <span className="font-medium">{quantity}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Rate: </span>
+                            <span className="font-medium">₹ {rate.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })
                 ) : (
-                  <tr>
-                    <td className="border border-red-900 p-2 text-center">1</td>
-                    <td className="border border-red-900 p-2 text-center" colSpan="4">No items specified</td>
-                  </tr>
+                  <div className="border-2 border-red-900 rounded p-4 bg-gray-50 text-center">
+                    <span className="text-gray-600">No items specified</span>
+                  </div>
                 )}
-              </tbody>
-              <tfoot className="bg-gray-100 font-bold">
-                <tr>
-                  <td className="border border-red-900 p-2 text-center" colSpan="4">
-                    Thanks !!! Visit Again
-                  </td>
-                  <td className="border border-red-900 p-2 text-right">
-                    TOTAL: ₹ {(order.total_amount || 0).toLocaleString()}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                {/* Mobile Total */}
+                <div className="border-2 border-red-900 rounded p-4 bg-red-900 text-white text-center font-bold">
+                  <div className="text-sm mb-1">Thanks !!! Visit Again</div>
+                  <div className="text-lg">TOTAL: ₹ {(order.total_amount || 0).toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Desktop Table View (sm and above) */}
+              <table className="hidden sm:table w-full border border-red-900">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-red-900 p-2 text-center w-12 text-sm">Nos.</th>
+                    <th className="border border-red-900 p-2 text-left text-sm">Details</th>
+                    <th className="border border-red-900 p-2 text-center w-16 text-sm">Qty</th>
+                    <th className="border border-red-900 p-2 text-right w-24 text-sm">Rate</th>
+                    <th className="border border-red-900 p-2 text-right w-24 text-sm">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {order.items && order.items.length > 0 ? (
+                    order.items.map((item, index) => {
+                      const quantity = item.quantity || 1;
+                      const rate = item.price || 0;
+                      const amount = quantity * rate;
+                      return (
+                        <tr key={index}>
+                          <td className="border border-red-900 p-2 text-center text-sm">{index + 1}</td>
+                          <td className="border border-red-900 p-2 text-sm">{item.product_name || item.name || 'N/A'}</td>
+                          <td className="border border-red-900 p-2 text-center text-sm">{quantity}</td>
+                          <td className="border border-red-900 p-2 text-right text-sm">₹ {rate.toLocaleString()}</td>
+                          <td className="border border-red-900 p-2 text-right text-sm">₹ {amount.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td className="border border-red-900 p-2 text-center text-sm">1</td>
+                      <td className="border border-red-900 p-2 text-center text-sm" colSpan="4">No items specified</td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot className="bg-gray-100 font-bold">
+                  <tr>
+                    <td className="border border-red-900 p-2 text-center text-sm" colSpan="4">
+                      Thanks !!! Visit Again
+                    </td>
+                    <td className="border border-red-900 p-2 text-right text-sm">
+                      TOTAL: ₹ {(order.total_amount || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
 
             {/* Footer */}
             <div className="flex mt-5">
