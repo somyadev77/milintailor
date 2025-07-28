@@ -6,7 +6,8 @@ import { customerService } from '../services/customerService';
 import { FaSave, FaTimes, FaRuler, FaSpinner, FaArrowLeft } from 'react-icons/fa';
 
 const EditMeasurement = () => {
-  const { customerId, measurementId } = useParams();
+  const params = useParams();
+  const { customerId, measurementId } = params;
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
   const [measurement, setMeasurement] = useState(null);
@@ -15,23 +16,51 @@ const EditMeasurement = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  
+  // Debug parameters
+  console.log('🔍 All useParams():', params);
+  console.log('🔍 customerId:', customerId, typeof customerId);
+  console.log('🔍 measurementId:', measurementId, typeof measurementId);
+  console.log('🔍 Current URL:', window.location.href);
+  console.log('🔍 Pathname:', window.location.pathname);
 
   useEffect(() => {
+    // Debug log to see what parameters we get
+    console.log('🔍 EditMeasurement useEffect - Parameters:', { customerId, measurementId });
+    console.log('🔍 Current location:', window.location.pathname);
+    
     // Guard clause: Don't run if parameters aren't ready yet
-    if (!customerId || !measurementId) {
+    if (!customerId) {
+      console.log('❌ Missing customerId parameter, waiting...', { customerId, measurementId });
+      return;
+    }
+    
+    // For new measurements, measurementId should be 'new'
+    // For existing measurements, measurementId should be a valid ID
+    if (!measurementId) {
+      console.log('❌ Missing measurementId parameter, waiting...', { customerId, measurementId });
       return;
     }
 
     const loadData = async () => {
       try {
         setLoading(true);
-        console.log('Loading measurement edit data...', { customerId, measurementId });
+        console.log('🔄 Loading measurement edit data...', { customerId, measurementId });
         
-        // Load customer data
-        const customerData = await customerService.getById(customerId);
-        console.log('Customer data:', customerData);
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000)
+        );
+        
+        // Load customer data with timeout
+        console.log('📋 Loading customer data...');
+        const customerDataPromise = customerService.getById(customerId);
+        const customerData = await Promise.race([customerDataPromise, timeoutPromise]);
+        
+        console.log('✅ Customer data loaded:', customerData);
         if (!customerData) {
-          console.error('Customer not found');
+          console.error('❌ Customer not found');
+          alert('Customer not found. Redirecting to customers list.');
           navigate('/customers');
           return;
         }
@@ -41,7 +70,7 @@ const EditMeasurement = () => {
         
         // Check if we're creating a new measurement
         if (measurementId === 'new') {
-          console.log('Creating new measurement');
+          console.log('🆕 Creating new measurement');
           // Create a new empty measurement object
           targetMeasurement = {
             id: 'new',
@@ -53,13 +82,16 @@ const EditMeasurement = () => {
           };
         } else {
           // Load existing measurement
-          const measurements = await measurementService.getByCustomer(customerId);
-          console.log('All customer measurements:', measurements);
+          console.log('📏 Loading existing measurements...');
+          const measurementsPromise = measurementService.getByCustomer(customerId);
+          const measurements = await Promise.race([measurementsPromise, timeoutPromise]);
+          
+          console.log('✅ All customer measurements loaded:', measurements);
           targetMeasurement = measurements.find(m => m.id === measurementId);
-          console.log('Target measurement:', targetMeasurement);
+          console.log('🎯 Target measurement:', targetMeasurement);
           
           if (!targetMeasurement) {
-            console.error('Measurement not found with ID:', measurementId);
+            console.error('❌ Measurement not found with ID:', measurementId);
             alert('Measurement not found. Redirecting to customer details.');
             navigate(`/customers/view/${customerId}`);
             return;
@@ -67,11 +99,51 @@ const EditMeasurement = () => {
         }
         
         setMeasurement(targetMeasurement);
+        console.log('✅ Measurement state set');
 
         // Load templates and create default ones if needed
-        await measurementTemplateService.getDefaultTemplates();
-        const templates = await measurementTemplateService.getAll();
-        console.log('Available templates:', templates);
+        console.log('📝 Loading measurement templates...');
+        const defaultTemplatesPromise = measurementTemplateService.getDefaultTemplates();
+        await Promise.race([defaultTemplatesPromise, timeoutPromise]);
+        
+        const templatesPromise = measurementTemplateService.getAll();
+        const templates = await Promise.race([templatesPromise, timeoutPromise]);
+        
+        console.log('✅ Available templates loaded:', templates);
+        
+        // If no templates are loaded, create a basic fallback template
+        if (!templates || templates.length === 0) {
+          console.log('⚠️ No templates found, creating fallback template');
+          const fallbackTemplate = {
+            name: 'Basic Measurements',
+            fields: [
+              { name: 'chest', label: 'Chest', unit: 'inches', required: false },
+              { name: 'waist', label: 'Waist', unit: 'inches', required: false },
+              { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: false },
+              { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: false },
+              { name: 'shirt_length', label: 'Shirt Length', unit: 'inches', required: false },
+              { name: 'inseam', label: 'Inseam', unit: 'inches', required: false },
+              { name: 'hip', label: 'Hip', unit: 'inches', required: false }
+            ]
+          };
+          setTemplate(fallbackTemplate);
+          
+          // Initialize form data with fallback template
+          const initialFormData = {};
+          fallbackTemplate.fields.forEach(field => {
+            const existingValue = targetMeasurement.data && targetMeasurement.data[field.name];
+            if (existingValue && typeof existingValue === 'object' && existingValue.value !== undefined) {
+              initialFormData[field.name] = existingValue.value;
+            } else if (existingValue !== null && existingValue !== undefined) {
+              initialFormData[field.name] = existingValue;
+            } else {
+              initialFormData[field.name] = '';
+            }
+          });
+          setFormData(initialFormData);
+          console.log('✅ Fallback template and form data initialized');
+          return; // Exit early with fallback template
+        }
         
         // Create a comprehensive template that includes ALL fields from ALL templates
         const allFields = new Map();
@@ -87,7 +159,7 @@ const EditMeasurement = () => {
                     name: field.name,
                     label: field.label,
                     unit: field.unit || 'inches',
-                    required: field.required || false
+                    required: false // Force all fields to be optional
                   });
                 }
               }
@@ -169,9 +241,8 @@ const EditMeasurement = () => {
     
     if (template && template.fields) {
       template.fields.forEach(field => {
-        if (field.required && (!formData[field.name] || formData[field.name].toString().trim() === '')) {
-          newErrors[field.name] = `${field.label} is required`;
-        } else if (formData[field.name] && isNaN(formData[field.name])) {
+        // Only validate that entered values are valid numbers, no required field validation
+        if (formData[field.name] && formData[field.name].toString().trim() !== '' && isNaN(formData[field.name])) {
           newErrors[field.name] = `${field.label} must be a valid number`;
         }
       });

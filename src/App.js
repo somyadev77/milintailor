@@ -10,6 +10,7 @@ import Customers from './pages/Customers';
 import NewCustomer from './pages/NewCustomer';
 import CustomerView from './pages/CustomerView';
 import EditMeasurement from './pages/EditMeasurement';
+import NewMeasurementPage from './pages/NewMeasurementPage';
 import Orders from './pages/Orders';
 import CreateOrder from './pages/CreateOrder'; // Change from NewOrder to CreateOrder
 import MeasurementSettings from './pages/MeasurementSettings';
@@ -83,7 +84,7 @@ function App() {
               path="/customers/:customerId/measurements/new"
               element={
                 <ProtectedRoute>
-                  <EditMeasurement />
+                  <NewMeasurementPage />
                 </ProtectedRoute>
               }
             />

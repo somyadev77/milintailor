@@ -46,6 +46,7 @@ function CustomerView() {
             <span>Edit Customer</span>
           </Link>
         </div>
+        <p><strong>Customer ID:</strong> {customer.id}</p>
         <p><strong>Phone:</strong> {customer.phone}</p>
         <p><strong>Email:</strong> {customer.email || 'N/A'}</p>
         <p><strong>Address:</strong> {customer.address || 'N/A'}</p>
@@ -54,65 +55,114 @@ function CustomerView() {
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-semibold">Measurements</h3>
-          <Link
-            to={`/customers/${id}/measurements/new`}
-            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
-          >
-            <FaPlus />
-            <span>Add Measurement</span>
-          </Link>
-        </div>
-        {customer.measurements && customer.measurements.length > 0 ? (
-          <div className="space-y-4">
-            {customer.measurements.map((measurement, index) => (
-              <div key={measurement.id || index} className="bg-gray-50 p-4 rounded-lg">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-semibold text-lg">
-                    {measurement.template_name || `Measurement Set ${index + 1}`}
-                  </h4>
-                  {measurement.id && (
-                    <Link
-                      to={`/customers/${id}/measurements/${measurement.id}/edit`}
-                      className="flex items-center space-x-1 text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors duration-200"
-                    >
-                      <FaEdit />
-                      <span>Edit</span>
-                    </Link>
-                  )}
-                </div>
-                {measurement.data && typeof measurement.data === 'object' ? (
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    {Object.entries(measurement.data).map(([key, value]) => {
-                      let displayValue;
-                      if (value && typeof value === 'object' && value.value !== undefined) {
-                        displayValue = `${value.value}${value.unit ? ` ${value.unit}` : ''}`;
-                      } else if (value !== null && value !== undefined) {
-                        displayValue = String(value);
-                      } else {
-                        displayValue = 'N/A';
-                      }
-                      return (
-                        <div key={key}>
-                          <span className="font-medium">{key}:</span> {displayValue}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No measurement data available</p>
-                )}
-                {measurement.created_at && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    Created: {new Date(measurement.created_at).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            ))}
+          <div className="flex space-x-2">
+            {customer.measurements && customer.measurements.length > 0 && (
+              <Link
+                to={`/customers/${id}/measurements/${customer.measurements[0].id}/edit`}
+                className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+              >
+                <FaEdit />
+                <span>Edit Measurements</span>
+              </Link>
+            )}
+            <Link
+              to={`/customers/${id}/measurements/new`}
+              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+            >
+              <FaPlus />
+              <span>Add Measurements</span>
+            </Link>
           </div>
-        ) : (
+        </div>
+        
+        {customer.measurements && customer.measurements.length > 0 ? (() => {
+          // Combine all measurements from all templates into one unified view
+          const allMeasurements = new Map();
+          let latestDate = null;
+          
+          // Merge all measurements from different templates
+          customer.measurements.forEach(measurement => {
+            if (measurement.data && typeof measurement.data === 'object') {
+              Object.entries(measurement.data).forEach(([key, value]) => {
+                // Only include entries that have actual values
+                if (value && typeof value === 'object' && value.value !== undefined) {
+                  if (value.value !== null && value.value !== undefined && value.value !== '' && value.value !== 0) {
+                    allMeasurements.set(key, value);
+                  }
+                } else if (value !== null && value !== undefined && value !== '' && value !== 0) {
+                  allMeasurements.set(key, value);
+                }
+              });
+            }
+            
+            // Track the latest creation date
+            if (measurement.created_at) {
+              const measurementDate = new Date(measurement.created_at);
+              if (!latestDate || measurementDate > latestDate) {
+                latestDate = measurementDate;
+              }
+            }
+          });
+          
+          if (allMeasurements.size === 0) {
+            return (
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <div className="text-center py-4">
+                  <p className="text-gray-500 mb-2">No measurements filled yet</p>
+                  <p className="text-xs text-gray-400">Click "Add Measurements" to start adding measurements</p>
+                </div>
+              </div>
+            );
+          }
+          
+          return (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                {Array.from(allMeasurements.entries())
+                  .sort(([keyA], [keyB]) => {
+                    // Sort measurements alphabetically by key
+                    const displayKeyA = keyA.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const displayKeyB = keyB.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    return displayKeyA.localeCompare(displayKeyB);
+                  })
+                  .map(([key, value]) => {
+                    let displayValue;
+                    let displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    
+                    if (value && typeof value === 'object' && value.value !== undefined) {
+                      displayValue = `${value.value}${value.unit ? ` ${value.unit}` : ''}`;
+                    } else if (value !== null && value !== undefined) {
+                      displayValue = String(value);
+                    }
+                    
+                    return (
+                      <div key={key} className="bg-white p-3 rounded border shadow-sm">
+                        <div className="font-medium text-gray-700 text-xs uppercase tracking-wide mb-1">
+                          {displayKey}
+                        </div>
+                        <div className="text-gray-900 font-semibold">
+                          {displayValue}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              
+              {latestDate && (
+                <div className="mt-4 pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-400">
+                    Last updated: {latestDate.toLocaleDateString()}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })() : (
           <div className="text-center py-8">
-            <p className="text-gray-500 mb-4">No measurements available for this customer.</p>
-            <p className="text-sm text-gray-400">Click "Add Measurement" above to create the first measurement set.</p>
+            <div className="bg-gray-50 p-6 rounded-lg">
+              <p className="text-gray-500 mb-4">No measurements available for this customer.</p>
+              <p className="text-sm text-gray-400">Click "Add Measurements" above to create the first measurement set.</p>
+            </div>
           </div>
         )}
       </div>

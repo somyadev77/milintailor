@@ -111,18 +111,21 @@ export const measurementTemplateService = {
   // Get default templates (create some basic ones if none exist)
   async getDefaultTemplates() {
     try {
+      console.log('📋 Getting default templates...');
       const existingTemplates = await this.getAll();
+      console.log('📊 Existing templates found:', existingTemplates.length);
       
       if (existingTemplates.length === 0) {
+        console.log('🆕 No templates found, creating default templates...');
         // Create default templates
         const defaultTemplates = [
           {
             name: 'Men\'s Shirt',
             fields: [
-              { name: 'chest', label: 'Chest', unit: 'inches', required: true },
-              { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: true },
-              { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: true },
-              { name: 'shirt_length', label: 'Shirt Length', unit: 'inches', required: true },
+              { name: 'chest', label: 'Chest', unit: 'inches', required: false },
+              { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: false },
+              { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: false },
+              { name: 'shirt_length', label: 'Shirt Length', unit: 'inches', required: false },
               { name: 'collar', label: 'Collar', unit: 'inches', required: false },
               { name: 'waist', label: 'Waist', unit: 'inches', required: false }
             ]
@@ -130,10 +133,10 @@ export const measurementTemplateService = {
           {
             name: 'Men\'s Trouser',
             fields: [
-              { name: 'waist', label: 'Waist', unit: 'inches', required: true },
-              { name: 'hip', label: 'Hip', unit: 'inches', required: true },
-              { name: 'inseam', label: 'Inseam', unit: 'inches', required: true },
-              { name: 'outseam', label: 'Outseam', unit: 'inches', required: true },
+              { name: 'waist', label: 'Waist', unit: 'inches', required: false },
+              { name: 'hip', label: 'Hip', unit: 'inches', required: false },
+              { name: 'inseam', label: 'Inseam', unit: 'inches', required: false },
+              { name: 'outseam', label: 'Outseam', unit: 'inches', required: false },
               { name: 'thigh', label: 'Thigh', unit: 'inches', required: false },
               { name: 'knee', label: 'Knee', unit: 'inches', required: false },
               { name: 'bottom', label: 'Bottom', unit: 'inches', required: false }
@@ -142,20 +145,20 @@ export const measurementTemplateService = {
           {
             name: 'Women\'s Blouse',
             fields: [
-              { name: 'bust', label: 'Bust', unit: 'inches', required: true },
-              { name: 'waist', label: 'Waist', unit: 'inches', required: true },
-              { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: true },
-              { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: true },
-              { name: 'blouse_length', label: 'Blouse Length', unit: 'inches', required: true },
+              { name: 'bust', label: 'Bust', unit: 'inches', required: false },
+              { name: 'waist', label: 'Waist', unit: 'inches', required: false },
+              { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: false },
+              { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: false },
+              { name: 'blouse_length', label: 'Blouse Length', unit: 'inches', required: false },
               { name: 'neck', label: 'Neck', unit: 'inches', required: false }
             ]
           },
           {
             name: 'Women\'s Skirt',
             fields: [
-              { name: 'waist', label: 'Waist', unit: 'inches', required: true },
-              { name: 'hip', label: 'Hip', unit: 'inches', required: true },
-              { name: 'skirt_length', label: 'Skirt Length', unit: 'inches', required: true },
+              { name: 'waist', label: 'Waist', unit: 'inches', required: false },
+              { name: 'hip', label: 'Hip', unit: 'inches', required: false },
+              { name: 'skirt_length', label: 'Skirt Length', unit: 'inches', required: false },
               { name: 'thigh', label: 'Thigh', unit: 'inches', required: false }
             ]
           }

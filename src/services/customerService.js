@@ -1,5 +1,6 @@
 import { db, addRecord, updateRecord, deleteRecord } from '../db';
 import supabase from '../supabaseClient';
+import { measurementService } from './measurementService';
 
 export const customerService = {
   // Get all customers (prioritize local data)
@@ -106,11 +107,8 @@ export const customerService = {
       const customer = await this.getById(id);
       if (!customer) return null;
 
-      const measurements = await db.measurements
-        .where('customer_id')
-        .equals(id)
-        .and(record => record.sync_status !== 'deleted')
-        .toArray();
+      // Use measurementService to get measurements with Supabase sync
+      const measurements = await measurementService.getByCustomer(id);
 
       return { ...customer, measurements };
     } catch (error) {

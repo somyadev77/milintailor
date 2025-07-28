@@ -6,6 +6,9 @@ const MeasurementSettings = () => {
   const [customFields, setCustomFields] = useState([]);
   const [isAddingField, setIsAddingField] = useState(false);
   const [editingField, setEditingField] = useState(null);
+  const [globalSettings, setGlobalSettings] = useState({
+    defaultUnit: 'inches'
+  });
   const [newField, setNewField] = useState({
     name: '',
     label: '',
@@ -14,6 +17,14 @@ const MeasurementSettings = () => {
     required: false,
     category: 'body'
   });
+
+  // Update new field unit when global settings change
+  useEffect(() => {
+    setNewField(prev => ({
+      ...prev,
+      unit: globalSettings.defaultUnit
+    }));
+  }, [globalSettings.defaultUnit]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -24,9 +35,11 @@ const MeasurementSettings = () => {
   ];
 
   const units = [
-    { value: 'inches', label: 'Inches' },
-    { value: 'cm', label: 'Centimeters' },
-    { value: 'mm', label: 'Millimeters' }
+    { value: 'inches', label: 'Inches (in)' },
+    { value: 'cm', label: 'Centimeters (cm)' },
+    { value: 'mm', label: 'Millimeters (mm)' },
+    { value: 'feet', label: 'Feet (ft)' },
+    { value: 'meters', label: 'Meters (m)' }
   ];
 
   const categories = [
@@ -50,6 +63,7 @@ const MeasurementSettings = () => {
 
   useEffect(() => {
     loadCustomFields();
+    loadGlobalSettings();
   }, []);
 
   const loadCustomFields = async () => {
@@ -79,6 +93,57 @@ const MeasurementSettings = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadGlobalSettings = async () => {
+    try {
+      // Try to load from Supabase first
+      const { data, error } = await supabase
+        .from('measurement_settings')
+        .select('*')
+        .single();
+
+      if (error || !data) {
+        console.warn('Supabase settings not available, loading from localStorage:', error);
+        // Fallback to localStorage
+        const savedSettings = localStorage.getItem('measurementGlobalSettings');
+        if (savedSettings) {
+          setGlobalSettings(JSON.parse(savedSettings));
+        }
+      } else {
+        setGlobalSettings({
+          defaultUnit: data.default_unit || 'inches'
+        });
+      }
+    } catch (err) {
+      console.warn('Error loading global settings, using localStorage:', err);
+      const savedSettings = localStorage.getItem('measurementGlobalSettings');
+      if (savedSettings) {
+        setGlobalSettings(JSON.parse(savedSettings));
+      }
+    }
+  };
+
+  const saveGlobalSettings = async (settings) => {
+    // Save to localStorage as backup
+    localStorage.setItem('measurementGlobalSettings', JSON.stringify(settings));
+    
+    try {
+      // Try to save to Supabase
+      const { error } = await supabase
+        .from('measurement_settings')
+        .upsert({
+          id: 1, // Single row for global settings
+          default_unit: settings.defaultUnit,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) {
+        console.warn('Could not sync global settings to Supabase:', error);
+      }
+    } catch (err) {
+      console.warn('Supabase sync failed for global settings:', err);
     }
   };
 
@@ -128,12 +193,12 @@ const MeasurementSettings = () => {
       setCustomFields(updatedFields);
       await saveToStorage(updatedFields);
       
-      // Reset form
+      // Reset form with global default unit
       setNewField({
         name: '',
         label: '',
         type: 'number',
-        unit: 'inches',
+        unit: globalSettings.defaultUnit,
         required: false,
         category: 'body'
       });
@@ -308,6 +373,50 @@ const MeasurementSettings = () => {
         <p className="text-gray-600">
           Manage custom measurement fields that will appear in the order creation form.
         </p>
+      </div>
+
+      {/* Global Settings Section */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Global Settings</h2>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Default Unit
+              </label>
+              <select
+                value={globalSettings.defaultUnit}
+                onChange={(e) => {
+                  const newSettings = { ...globalSettings, defaultUnit: e.target.value };
+                  setGlobalSettings(newSettings);
+                  saveGlobalSettings(newSettings);
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {units.map(unit => (
+                  <option key={unit.value} value={unit.value}>{unit.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Current Default Unit
+              </label>
+              <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-700">
+                {units.find(u => u.value === globalSettings.defaultUnit)?.label || 'Inches (in)'}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                This unit will be used as default for new measurement fields
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">💡 Pro Tip</h4>
+            <p className="text-sm text-blue-800">
+              Choose the unit system that your tailor shop primarily uses. This will be applied to all new measurement fields by default, but you can still customize individual field units as needed.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Default Fields Section */}

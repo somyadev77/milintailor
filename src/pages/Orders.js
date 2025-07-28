@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 // eslint-disable-next-line no-unused-vars
-import { FaSearch, FaEdit, FaTrash, FaReceipt, FaPrint, FaTimes, FaSpinner, FaPlus, FaEye } from 'react-icons/fa';
+import { FaSearch, FaEdit, FaTrash, FaReceipt, FaPrint, FaTimes, FaSpinner, FaPlus, FaEye, FaFilePdf } from 'react-icons/fa';
 import { orderService } from '../services/orderService';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const Orders = () => {
   const { id: orderId } = useParams(); // Get order ID from URL if present
@@ -68,292 +70,547 @@ const Orders = () => {
     setIsPrintPreviewOpen(true);
   };
 
-  const handlePrint = (order) => {
-    // Create a new window with the receipt format
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    
-    const formatDate = (dateString) => {
-      if (!dateString) return 'N/A';
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    };
+  const handleViewReceipt = (order) => {
+    setOrderToPrint(order);
+    setIsPrintPreviewOpen(true);
+  };
 
+const handlePrintReceipt = (order) => {
+    // Create a styled receipt element for printing
     const receiptHTML = `
       <!DOCTYPE html>
-      <html lang="en">
+      <html>
       <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Receipt - Order #${order.id || 'N/A'}</title>
-          <link rel="preconnect" href="https://fonts.googleapis.com">
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Tinos:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-          <style>
-              body {
-                  font-family: 'Roboto', Arial, sans-serif;
-                  margin: 0;
-                  padding: 0;
-                  background-color: #f0f2f5;
-              }
-              .receipt-container {
-                  border: 5px double #800000;
-                  padding: 25px;
-                  max-width: 800px;
-                  margin: 20px auto;
-                  background: #fff;
-                  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-              }
-              @media print {
-                  @page {
-                      size: auto;
-                      margin: 0mm;
-                  }
-                  body {
-                      margin: 0;
-                      padding: 0;
-                      background-color: #fff;
-                  }
-                  .receipt-container {
-                      margin: 0;
-                      border: 5px double #800000 !important;
-                      max-width: 100%;
-                      box-shadow: none;
-                  }
-              }
-              h1, h2, h3, p, td, th {
-                  color: #333;
-              }
-              table {
-                  width: 100%;
-                  border-collapse: collapse;
-              }
-              .text-center { text-align: center; }
-              .text-right { text-align: right; }
-              .text-left { text-align: left; }
-              .font-bold { font-weight: bold; }
-              .font-italic { font-style: italic; }
-              .header {
-                  border-bottom: 2px solid #800000;
-                  padding-bottom: 15px;
-                  margin-bottom: 20px;
-              }
-              .header-logo {
-                  width: 15%;
-                  vertical-align: top;
-              }
-              .header-logo img {
-                  height: 70px;
-                  border: 1px solid #ccc;
-                  border-radius: 4px;
-              }
-              .header-details {
-                  width: 65%;
-                  vertical-align: middle;
-              }
-              .header-details h1 {
-                  color: #800000;
-                  margin: 0;
-                  font-family: 'Tinos', serif;
-                  font-size: 2.4em;
-              }
-              .header-details .since {
-                  font-size: 0.5em;
-                  font-weight: normal;
-                  vertical-align: middle;
-              }
-              .header-details .slogan {
-                  margin: 2px 0;
-                  font-size: 1.1em;
-                  font-family: 'Tinos', serif;
-              }
-              .header-details .address {
-                  margin: 5px 0 0 0;
-                  font-size: 0.9em;
-                  line-height: 1.4;
-              }
-              .header-contact {
-                  width: 20%;
-                  vertical-align: top;
-              }
-              .header-contact .phone {
-                  font-weight: bold;
-                  margin: 0;
-              }
-              .header-contact .notice {
-                  background: #800000;
-                  color: #fff;
-                  padding: 5px;
-                  margin-top: 5px;
-                  font-weight: bold;
-                  border-radius: 3px;
-              }
-              .customer-info {
-                  font-size: 1.1em;
-              }
-              .customer-info td {
-                  width: 50%;
-                  padding: 8px 0;
-              }
-              .customer-info .detail-value {
-                  border-bottom: 1px dotted #000;
-                  padding-left: 10px;
-              }
-              .items-table {
-                  margin-top: 20px;
-                  border: 1px solid #800000;
-              }
-              .items-table th {
-                  border: 1px solid #800000;
-                  padding: 10px;
-                  background: #f2f2f2;
-              }
-              .items-table td {
-                  border: 1px solid #800000;
-                  padding: 10px;
-                  vertical-align: top;
-              }
-              .items-table .description-cell {
-                  height: 200px;
-                  line-height: 1.6;
-              }
-              .items-table tfoot td {
-                  background: #f2f2f2;
-                  font-weight: bold;
-              }
-              .footer {
-                  margin-top: 20px;
-              }
-              .footer-notes {
-                  width: 65%;
-                  vertical-align: top;
-              }
-              .footer-notes .sign-line {
-                  border-bottom: 1px dotted #000;
-                  width: 200px;
-                  display: inline-block;
-              }
-              .footer-notes ul {
-                  font-size: 0.8em;
-                  padding-left: 20px;
-                  margin-top: 10px;
-                  list-style-type: disc;
-              }
-              .footer-signature {
-                  width: 35%;
-                  vertical-align: bottom;
-              }
-              .footer-signature .proprietor-sign {
-                  margin-top: 40px;
-                  border-bottom: 1px dotted #000;
-              }
-              .footer-signature p {
-                  margin: 0;
-              }
-          </style>
+        <title>Receipt - ${order.customer?.name || order.customer || 'Unknown Customer'}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            font-family: 'Roboto', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #fff;
+          }
+          .receipt-container {
+            border: 5px double #800000;
+            padding: 25px;
+            background: #fff;
+            max-width: 800px;
+            margin: 0 auto;
+          }
+          .header {
+            border-bottom: 2px solid #800000;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            display: table;
+            width: 100%;
+          }
+          .header-logo, .header-details, .header-contact {
+            display: table-cell;
+            vertical-align: top;
+          }
+          .header-logo { width: 15%; }
+          .header-logo img {
+            height: 70px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+          }
+          .header-details {
+            width: 65%;
+            text-align: center;
+            vertical-align: middle;
+          }
+          .header-details h1 {
+            color: #800000;
+            margin: 0;
+            font-family: 'Tinos', serif;
+            font-size: 2.4em;
+          }
+          .header-details .since {
+            font-size: 0.5em;
+            font-weight: normal;
+            vertical-align: middle;
+          }
+          .header-details .slogan {
+            margin: 2px 0;
+            font-size: 1.1em;
+            font-family: 'Tinos', serif;
+            font-style: italic;
+            font-weight: bold;
+          }
+          .header-details .address {
+            margin: 5px 0 0 0;
+            font-size: 0.9em;
+            line-height: 1.4;
+            padding-bottom: 8px;
+          }
+          .header-contact {
+            width: 20%;
+            text-align: right;
+          }
+          .header-contact .phone {
+            font-weight: bold;
+            margin: 0;
+          }
+          .header-contact .notice {
+            background: #800000;
+            color: #fff;
+            padding: 5px;
+            margin-top: 5px;
+            font-weight: bold;
+            border-radius: 3px;
+            text-align: center;
+          }
+          .customer-info {
+            font-size: 1.1em;
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .customer-info td {
+            width: 50%;
+            padding: 8px 0;
+          }
+          .customer-info .detail-value {
+            border-bottom: 1px dotted #000;
+            padding-left: 10px;
+            padding-bottom: 6px;
+            display: inline-block;
+            min-width: 200px;
+          }
+          .items-table {
+            margin-top: 20px;
+            border: 1px solid #800000;
+            border-collapse: collapse;
+            width: 100%;
+          }
+          .items-table th, .items-table td {
+            border: 1px solid #800000;
+            padding: 10px;
+            vertical-align: top;
+          }
+          .items-table th {
+            background: #f2f2f2;
+          }
+          .items-table tfoot td {
+            background: #f2f2f2;
+            font-weight: bold;
+          }
+          .footer {
+            margin-top: 20px;
+            display: table;
+            width: 100%;
+          }
+          .footer-notes, .footer-signature {
+            display: table-cell;
+            vertical-align: top;
+          }
+          .footer-notes {
+            width: 65%;
+          }
+          .footer-notes .sign-line {
+            border-bottom: 1px dotted #000;
+            width: 200px;
+            display: inline-block;
+            height: 25px;
+          }
+          .footer-notes ul {
+            font-size: 0.8em;
+            padding-left: 20px;
+            margin-top: 10px;
+            list-style-type: disc;
+          }
+          .footer-signature {
+            width: 35%;
+            text-align: center;
+            vertical-align: bottom;
+          }
+          .footer-signature .proprietor-sign {
+            margin-top: 40px;
+            border-bottom: 1px dotted #000;
+            height: 25px;
+          }
+          .footer-signature p {
+            margin: 0;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .text-left { text-align: left; }
+          .font-bold { font-weight: bold; }
+          .font-italic { font-style: italic; }
+          @media print {
+            body { margin: 0; padding: 10px; }
+            .receipt-container { border: 3px double #800000; }
+          }
+        </style>
       </head>
-      <body onload="window.print(); window.close();">
-          <div class="receipt-container">
-              <!-- Header -->
-              <table class="header">
-                  <tr>
-                      <td class="header-logo">
-                          <img src="https://placehold.co/140x140/800000/FFFFFF?text=MT&font=serif" alt="Logo">
-                      </td>
-                      <td class="header-details text-center">
-                          <h1>MILIN TAILOR <span class="since">Since 1965</span></h1>
-                          <p class="slogan font-italic font-bold">We Will Make You Sew Happy !</p>
-                          <p class="address">Shop No. 2, Shiv Sai Complex, Opp. Triveni Resi.,<br>Near S.R.P. Group No. 1 (East Gate), Navapura, Vadodara.</p>
-                      </td>
-                      <td class="header-contact text-right">
-                          <p class="phone">M. 94263 69847</p>
-                          <div class="notice text-center">SUNDAY CLOSED</div>
-                      </td>
-                  </tr>
-              </table>
+      <body>
+        <div class="receipt-container">
+          <table class="header">
+            <tr>
+              <td class="header-logo">
+                <img src="/logo.jpg" alt="Milin Tailor Logo">
+              </td>
+              <td class="header-details text-center">
+                <h1>MILIN TAILOR <span class="since">Since 1965</span></h1>
+                <p class="slogan font-italic font-bold">We Will Make You Sew Happy !</p>
+                <p class="address">Shop No. 2, Shiv Sai Complex, Opp. Triveni Resi.,<br>Near S.R.P. Group No. 1 (East Gate), Navapura, Vadodara.</p>
+              </td>
+              <td class="header-contact text-right">
+                <p class="phone">M. 94263 69847</p>
+                <div class="notice text-center">SUNDAY CLOSED</div>
+              </td>
+            </tr>
+          </table>
 
-              <!-- Customer Details -->
-              <table class="customer-info">
-                  <tr>
-                      <td><strong>Name:</strong><span class="detail-value">${order.customer?.name || order.customer || 'Unknown Customer'}</span></td>
-                      <td><strong>Bill No.:</strong><span class="detail-value">${order.id ? order.id.substring(0, 5) : 'N/A'}</span></td>
-                  </tr>
-                  <tr>
-                      <td><strong>Delivery Date:</strong><span class="detail-value">${formatDate(order.delivery_date)}</span></td>
-                      <td><strong>Order Date:</strong><span class="detail-value">${formatDate(order.order_date)}</span></td>
-                  </tr>
-              </table>
+          <table class="customer-info">
+            <tr>
+              <td><strong>Name:</strong><span class="detail-value">${order.customer?.name || order.customer || 'Unknown Customer'}</span></td>
+              <td><strong>Bill No.:</strong><span class="detail-value">${order.id ? order.id.substring(0, 5) : 'N/A'}</span></td>
+            </tr>
+            <tr>
+              <td><strong>Delivery Date:</strong><span class="detail-value">${order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
+              <td><strong>Order Date:</strong><span class="detail-value" style="padding-left: 28px;">${order.order_date ? new Date(order.order_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
+            </tr>
+          </table>
 
-              <!-- Order Items Table -->
-              <table class="items-table">
-                  <thead>
-                      <tr>
-                          <th class="text-center" style="width: 10%;">Nos.</th>
-                          <th class="text-left">Details</th>
-                          <th class="text-center" style="width: 10%;">Qty</th>
-                          <th class="text-right" style="width: 20%;">Rate</th>
-                          <th class="text-right" style="width: 20%;">Amount</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                      ${order.items && order.items.length > 0 ? 
-                        order.items.map((item, index) => {
-                          const quantity = item.quantity || 1;
-                          const rate = item.price || 0;
-                          const amount = quantity * rate;
-                          return `
-                            <tr>
-                                <td class="text-center">${index + 1}</td>
-                                <td>${item.product_name || item.name || 'N/A'}</td>
-                                <td class="text-center">${quantity}</td>
-                                <td class="text-right">₹ ${rate.toLocaleString()}</td>
-                                <td class="text-right">₹ ${amount.toLocaleString()}</td>
-                            </tr>
-                          `;
-                        }).join('') : 
-                        `<tr>
-                            <td class="text-center">1</td>
-                            <td colspan="4" class="text-center">No items specified</td>
-                        </tr>`
-                      }
-                  </tbody>
-                  <tfoot>
-                      <tr>
-                          <td colspan="4" class="text-center">Thanks !!! Visit Again</td>
-                          <td class="text-right">TOTAL: ₹ ${(order.total_amount || 0).toLocaleString()}</td>
-                      </tr>
-                  </tfoot>
-              </table>
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th class="text-center" style="width: 10%;">Nos.</th>
+                <th class="text-left">Details</th>
+                <th class="text-center" style="width: 10%;">Qty</th>
+                <th class="text-right" style="width: 20%;">Rate</th>
+                <th class="text-right" style="width: 20%;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${order.items && order.items.length > 0 ? 
+                order.items.map((item, index) => {
+                  const quantity = item.quantity || 1;
+                  const rate = item.price || 0;
+                  const amount = quantity * rate;
+                  return `
+                    <tr>
+                        <td class="text-center">${index + 1}</td>
+                        <td>${item.product_name || item.name || 'N/A'}</td>
+                        <td class="text-center">${quantity}</td>
+                        <td class="text-right">₹ ${rate.toLocaleString()}</td>
+                        <td class="text-right">₹ ${amount.toLocaleString()}</td>
+                    </tr>
+                  `;
+                }).join('') : 
+                `<tr>
+                    <td class="text-center">1</td>
+                    <td colspan="4" class="text-center">No items specified</td>
+                </tr>`
+              }
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4" class="text-center">Thanks !!! Visit Again</td>
+                <td class="text-right">TOTAL: ₹ ${(order.total_amount || 0).toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
 
-              <!-- Footer -->
-              <table class="footer">
-                  <tr>
-                      <td class="footer-notes">
-                          <p class="font-bold">Receiver Sign: <span class="sign-line"></span></p>
-                          <ul>
-                              <li>No complain will be entertained in any hazardous situations.</li>
-                              <li>Plz. check fitting of your clothes at the time of Delivery.</li>
-                              <li>No Complain will be fulfilled after 90 days from Delivery date.</li>
-                              <li>Subject to Vadodara Jurisdiction only.</li>
-                          </ul>
-                      </td>
-                      <td class="footer-signature text-center">
-                          <p style="margin-top: 40px;">For MILIN TAILOR</p>
-                          <p class="proprietor-sign">&nbsp;</p>
-                          <p class="font-bold">Proprietor</p>
-                      </td>
-                  </tr>
-              </table>
-          </div>
+          <table class="footer">
+            <tr>
+              <td class="footer-notes">
+                <p class="font-bold">Receiver Sign:</p>
+                <div class="sign-line"></div>
+                <ul>
+                  <li>No complain will be entertained in any hazardous situations.</li>
+                  <li>Plz. check fitting of your clothes at the time of Delivery.</li>
+                  <li>No Complain will be fulfilled after 90 days from Delivery date.</li>
+                  <li>Subject to Vadodara Jurisdiction only.</li>
+                </ul>
+              </td>
+              <td class="footer-signature text-center">
+                <p style="margin-top: 40px;">For MILIN TAILOR</p>
+                <p class="proprietor-sign">&nbsp;</p>
+                <p class="font-bold">Proprietor</p>
+              </td>
+            </tr>
+          </table>
+        </div>
+        <script>
+          window.onload = function() {
+            window.print();
+          };
+        </script>
       </body>
       </html>
     `;
-    
+
+    // Open print window
+    const printWindow = window.open('', '_blank');
     printWindow.document.write(receiptHTML);
     printWindow.document.close();
+  };
+
+const handleDownloadPDF = async (order) => {
+    // Create a styled receipt element for PDF generation
+    const receiptElement = document.createElement('div');
+    receiptElement.style.cssText = `
+      font-family: 'Roboto', Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #fff;
+      width: 800px;
+      box-sizing: border-box;
+    `;
+    
+    receiptElement.innerHTML = `
+      <style>
+        * { box-sizing: border-box; }
+        .receipt-container {
+          border: 5px double #800000;
+          padding: 25px;
+          background: #fff;
+          font-family: 'Roboto', Arial, sans-serif;
+        }
+        .header {
+          border-bottom: 2px solid #800000;
+          padding-bottom: 15px;
+          margin-bottom: 20px;
+          display: table;
+          width: 100%;
+        }
+        .header-logo, .header-details, .header-contact {
+          display: table-cell;
+          vertical-align: top;
+        }
+        .header-logo { width: 15%; }
+        .header-logo img {
+          height: 70px;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+        }
+        .header-details {
+          width: 65%;
+          text-align: center;
+          vertical-align: middle;
+        }
+        .header-details h1 {
+          color: #800000;
+          margin: 0;
+          font-family: 'Tinos', serif;
+          font-size: 2.4em;
+        }
+        .header-details .since {
+          font-size: 0.5em;
+          font-weight: normal;
+          vertical-align: middle;
+        }
+        .header-details .slogan {
+          margin: 2px 0;
+          font-size: 1.1em;
+          font-family: 'Tinos', serif;
+          font-style: italic;
+          font-weight: bold;
+        }
+        .header-details .address {
+          margin: 5px 0 0 0;
+          font-size: 0.9em;
+          line-height: 1.4;
+          padding-bottom: 8px;
+        }
+        .header-contact {
+          width: 20%;
+          text-align: right;
+        }
+        .header-contact .phone {
+          font-weight: bold;
+          margin: 0;
+        }
+        .header-contact .notice {
+          background: #800000;
+          color: #fff;
+          padding: 5px;
+          margin-top: 5px;
+          font-weight: bold;
+          border-radius: 3px;
+          text-align: center;
+        }
+        .customer-info {
+          font-size: 1.1em;
+          width: 100%;
+          border-collapse: collapse;
+        }
+        .customer-info td {
+          width: 50%;
+          padding: 8px 0;
+        }
+        .customer-info .detail-value {
+          border-bottom: 1px dotted #000;
+          padding-left: 10px;
+          padding-bottom: 6px;
+          display: inline-block;
+          min-width: 200px;
+        }
+        .items-table {
+          margin-top: 20px;
+          border: 1px solid #800000;
+          border-collapse: collapse;
+          width: 100%;
+        }
+        .items-table th, .items-table td {
+          border: 1px solid #800000;
+          padding: 10px;
+          vertical-align: top;
+        }
+        .items-table th {
+          background: #f2f2f2;
+        }
+        .items-table tfoot td {
+          background: #f2f2f2;
+          font-weight: bold;
+        }
+        .footer {
+          margin-top: 20px;
+          display: table;
+          width: 100%;
+        }
+        .footer-notes, .footer-signature {
+          display: table-cell;
+          vertical-align: top;
+        }
+        .footer-notes {
+          width: 65%;
+        }
+        .footer-notes .sign-line {
+          border-bottom: 1px dotted #000;
+          width: 200px;
+          display: inline-block;
+          height: 25px;
+        }
+        .footer-notes ul {
+          font-size: 0.8em;
+          padding-left: 20px;
+          margin-top: 10px;
+          list-style-type: disc;
+        }
+        .footer-signature {
+          width: 35%;
+          text-align: center;
+          vertical-align: bottom;
+        }
+        .footer-signature .proprietor-sign {
+          margin-top: 40px;
+          border-bottom: 1px dotted #000;
+          height: 25px;
+        }
+        .footer-signature p {
+          margin: 0;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        .font-bold { font-weight: bold; }
+        .font-italic { font-style: italic; }
+      </style>
+      <div class="receipt-container">
+        <table class="header">
+          <tr>
+            <td class="header-logo">
+              <img src="/logo.jpg" alt="Milin Tailor Logo">
+            </td>
+            <td class="header-details text-center">
+              <h1>MILIN TAILOR <span class="since">Since 1965</span></h1>
+              <p class="slogan font-italic font-bold">We Will Make You Sew Happy !</p>
+              <p class="address">Shop No. 2, Shiv Sai Complex, Opp. Triveni Resi.,<br>Near S.R.P. Group No. 1 (East Gate), Navapura, Vadodara.</p>
+            </td>
+            <td class="header-contact text-right">
+              <p class="phone">M. 94263 69847</p>
+              <div class="notice text-center">SUNDAY CLOSED</div>
+            </td>
+          </tr>
+        </table>
+
+        <table class="customer-info">
+          <tr>
+            <td><strong>Name:</strong><span class="detail-value">${order.customer?.name || order.customer || 'Unknown Customer'}</span></td>
+            <td><strong>Bill No.:</strong><span class="detail-value">${order.id ? order.id.substring(0, 5) : 'N/A'}</span></td>
+          </tr>
+          <tr>
+            <td><strong>Delivery Date:</strong><span class="detail-value">${order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
+            <td><strong>Order Date:</strong><span class="detail-value" style="padding-left: 28px;">${order.order_date ? new Date(order.order_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
+          </tr>
+        </table>
+
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th class="text-center" style="width: 10%;">Nos.</th>
+              <th class="text-left">Details</th>
+              <th class="text-center" style="width: 10%;">Qty</th>
+              <th class="text-right" style="width: 20%;">Rate</th>
+              <th class="text-right" style="width: 20%;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${order.items && order.items.length > 0 ? 
+              order.items.map((item, index) => {
+                const quantity = item.quantity || 1;
+                const rate = item.price || 0;
+                const amount = quantity * rate;
+                return `
+                  <tr>
+                      <td class="text-center">${index + 1}</td>
+                      <td>${item.product_name || item.name || 'N/A'}</td>
+                      <td class="text-center">${quantity}</td>
+                      <td class="text-right">₹ ${rate.toLocaleString()}</td>
+                      <td class="text-right">₹ ${amount.toLocaleString()}</td>
+                  </tr>
+                `;
+              }).join('') : 
+              `<tr>
+                  <td class="text-center">1</td>
+                  <td colspan="4" class="text-center">No items specified</td>
+              </tr>`
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" class="text-center">Thanks !!! Visit Again</td>
+              <td class="text-right">TOTAL: ₹ ${(order.total_amount || 0).toLocaleString()}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <table class="footer">
+          <tr>
+            <td class="footer-notes">
+              <p class="font-bold">Receiver Sign:</p>
+              <div class="sign-line"></div>
+              <ul>
+                <li>No complain will be entertained in any hazardous situations.</li>
+                <li>Plz. check fitting of your clothes at the time of Delivery.</li>
+                <li>No Complain will be fulfilled after 90 days from Delivery date.</li>
+                <li>Subject to Vadodara Jurisdiction only.</li>
+              </ul>
+            </td>
+            <td class="footer-signature text-center">
+              <p style="margin-top: 40px;">For MILIN TAILOR</p>
+              <p class="proprietor-sign">&nbsp;</p>
+              <p class="font-bold">Proprietor</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    document.body.appendChild(receiptElement);
+
+    const canvas = await html2canvas(receiptElement, { scale: 2 });
+    const imgData = canvas.toDataURL('image/png');
+
+    const pdf = new jsPDF();
+    pdf.addImage(imgData, 'PNG', 10, 10, 180, 0);
+    const customerName = (order.customer?.name || order.customer || 'Unknown_Customer').replace(/[^a-zA-Z0-9]/g, '_');
+    const orderId = order.id ? order.id.substring(0, 8) : 'N_A';
+    pdf.save(`${customerName}_${orderId}.pdf`);
+
+    document.body.removeChild(receiptElement);
   };
 
   // eslint-disable-next-line no-unused-vars
@@ -530,10 +787,10 @@ const Orders = () => {
                       <FaEye className="mr-1" />View/Edit
                     </button>
                     <button 
-                      onClick={() => handlePrintPreview(order)}
-                      className="flex-1 flex items-center justify-center px-3 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+                      onClick={() => handleViewReceipt(order)}
+                      className="flex-1 flex items-center justify-center px-3 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
                     >
-                      <FaPrint className="mr-1" />Print Receipt
+                      <FaReceipt className="mr-1" />View Receipt
                     </button>
                   </div>
                 </div>
@@ -564,7 +821,7 @@ const Orders = () => {
         <ReceiptModal 
           order={selectedOrder} 
           onClose={() => setIsReceiptModalOpen(false)}
-          onPrint={handlePrint}
+          onPrint={handleDownloadPDF}
           onOrderUpdate={handleOrderUpdate}
         />
       )}
@@ -574,9 +831,10 @@ const Orders = () => {
           order={orderToPrint}
           onClose={() => setIsPrintPreviewOpen(false)}
           onPrint={() => {
-            handlePrint(orderToPrint);
+            handlePrintReceipt(orderToPrint);
             setIsPrintPreviewOpen(false);
           }}
+          onDownloadPDF={handleDownloadPDF}
         />
       )}
     </div>
@@ -1047,7 +1305,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
   );
 };
 
-const PrintPreviewModal = ({ order, onClose, onPrint }) => {
+const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
@@ -1066,10 +1324,16 @@ const PrintPreviewModal = ({ order, onClose, onPrint }) => {
           <h2 className="text-2xl font-bold text-gray-800">Print Preview</h2>
           <div className="flex gap-3">
             <button 
-              onClick={onPrint}
               className="bg-blue-600 text-white font-bold py-2 px-6 rounded hover:bg-blue-700 transition duration-300 ease-in-out flex items-center"
+              onClick={onPrint}
             >
               <FaPrint className="mr-2" /> Print Receipt
+            </button>
+            <button 
+              className="bg-green-600 text-white font-bold py-2 px-6 rounded hover:bg-green-700 transition duration-300 ease-in-out flex items-center"
+              onClick={() => onDownloadPDF(order)}
+            >
+              <FaFilePdf className="mr-2" /> Download PDF
             </button>
             <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
               <FaTimes size={24} />
@@ -1083,8 +1347,8 @@ const PrintPreviewModal = ({ order, onClose, onPrint }) => {
             {/* Header */}
             <div className="border-b-2 border-red-900 pb-4 mb-5">
               <div className="flex items-center">
-                <div className="w-16 h-16 bg-red-900 text-white flex items-center justify-center text-2xl font-bold mr-4 rounded">
-                  MT
+                <div className="w-16 h-16 mr-4">
+                  <img src="/logo.jpg" alt="Milin Tailor Logo" className="w-full h-full object-contain rounded" />
                 </div>
                 <div className="flex-1 text-center">
                   <h1 className="text-3xl font-bold text-red-900" style={{ fontFamily: 'serif' }}>
@@ -1111,25 +1375,25 @@ const PrintPreviewModal = ({ order, onClose, onPrint }) => {
             <div className="grid grid-cols-2 gap-4 mb-5 text-lg">
               <div>
                 <strong>Name:</strong>
-                <span className="border-b border-dotted border-black ml-2 px-2">
+                <span className="ml-2 px-2 pb-2 inline-block min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
                   {order.customer?.name || order.customer || 'Unknown Customer'}
                 </span>
               </div>
               <div>
                 <strong>Bill No.:</strong>
-                <span className="border-b border-dotted border-black ml-2 px-2">
+                <span className="ml-2 px-2 pb-2 inline-block min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
                   {order.id ? order.id.substring(0, 5) : 'N/A'}
                 </span>
               </div>
               <div>
                 <strong>Delivery Date:</strong>
-                <span className="border-b border-dotted border-black ml-2 px-2">
+                <span className="ml-2 px-2 pb-2 inline-block min-w-[200px]" style={{borderBottom: '1px dotted black'}}>
                   {formatDate(order.delivery_date)}
                 </span>
               </div>
               <div>
                 <strong>Order Date:</strong>
-                <span className="border-b border-dotted border-black ml-2 px-2">
+                <span className="ml-2 px-2 pb-2 inline-block min-w-[200px]" style={{borderBottom: '1px dotted black', marginLeft: '28px'}}>
                   {formatDate(order.order_date)}
                 </span>
               </div>
@@ -1184,9 +1448,8 @@ const PrintPreviewModal = ({ order, onClose, onPrint }) => {
             {/* Footer */}
             <div className="flex mt-5">
               <div className="flex-1">
-                <p className="font-bold mb-2">
-                  Receiver Sign: <span className="border-b border-dotted border-black inline-block w-48"></span>
-                </p>
+                <p className="font-bold mb-1">Receiver Sign:</p>
+                <div className="inline-block w-48 mb-2" style={{borderBottom: '1px dotted black', height: '25px'}}></div>
                 <ul className="text-sm space-y-1 mt-3">
                   <li>• No complain will be entertained in any hazardous situations.</li>
                   <li>• Plz. check fitting of your clothes at the time of Delivery.</li>
@@ -1196,7 +1459,7 @@ const PrintPreviewModal = ({ order, onClose, onPrint }) => {
               </div>
               <div className="w-1/3 text-center">
                 <p className="mt-10">For MILIN TAILOR</p>
-                <div className="border-b border-dotted border-black mt-10 mb-2"></div>
+                <div className="mt-10 mb-2" style={{borderBottom: '1px dotted black', height: '25px'}}></div>
                 <p className="font-bold">Proprietor</p>
               </div>
             </div>

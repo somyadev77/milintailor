@@ -7,6 +7,7 @@ import { measurementService } from '../services/measurementService';
 // eslint-disable-next-line no-unused-vars
 import { getAllMeasurementFields, createDefaultMeasurements } from '../services/measurementFieldsService';
 import { measurementTemplateService } from '../services/measurementTemplateService';
+import { measurementGlobalSettingsService } from '../services/measurementGlobalSettingsService';
 
 const CreateOrder = () => {
   const [customerType, setCustomerType] = useState('new');
@@ -21,6 +22,7 @@ const CreateOrder = () => {
   const [universalMeasurements, setUniversalMeasurements] = useState({});
   const [customMeasurements, setCustomMeasurements] = useState([]);
   const [newCustomMeasurement, setNewCustomMeasurement] = useState({ name: '', value: '', unit: 'inches' });
+  const [globalUnit, setGlobalUnit] = useState('inches');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [remindDate, setRemindDate] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
@@ -34,13 +36,14 @@ const CreateOrder = () => {
       setCustomers(allCustomers);
     };
 
+
     const loadMeasurements = async () => {
       const fields = await getAllMeasurementFields();
       setMeasurementFields(fields);
       setProducts([{ name: '', price: '', measurements: fields }]);
     };
 
-    const loadMeasurementTemplates = async () => {
+    const loadMeasurementTemplates = async (defaultUnit = 'inches') => {
       // Load default templates first
       await measurementTemplateService.getDefaultTemplates();
       const templates = await measurementTemplateService.getAll();
@@ -57,8 +60,8 @@ const CreateOrder = () => {
                 allUniversalFields[field.name] = {
                   label: field.label,
                   value: '',
-                  unit: field.unit || 'inches',
-                  required: field.required || false
+                  unit: defaultUnit, // Always use global default unit, ignore template unit
+                  required: false // Always make fields optional
                 };
               }
             }
@@ -70,9 +73,17 @@ const CreateOrder = () => {
       setUniversalMeasurements(allUniversalFields);
     };
 
-    loadCustomers();
-    loadMeasurements();
-    loadMeasurementTemplates();
+    const initializeData = async () => {
+      await loadCustomers();
+      const defaultUnit = await measurementGlobalSettingsService.getDefaultUnit();
+      console.log('🔧 Global default unit loaded:', defaultUnit);
+      setGlobalUnit(defaultUnit);
+      setNewCustomMeasurement(prev => ({ ...prev, unit: defaultUnit }));
+      await loadMeasurements();
+      await loadMeasurementTemplates(defaultUnit);
+    };
+
+    initializeData();
   }, []);
 
   useEffect(() => {
@@ -118,7 +129,7 @@ const CreateOrder = () => {
                     id: Date.now() + Math.random(),
                     name: name.charAt(0).toUpperCase() + name.slice(1),
                     value: value,
-                    unit: 'inches'
+                    unit: globalUnit
                   });
                 }
               }
@@ -170,8 +181,8 @@ const CreateOrder = () => {
             acc[f.name] = {
               label: f.label,
               value: '',
-              unit: f.unit || '',
-              required: f.required || false
+              unit: globalUnit, // Always use global unit, ignore template unit
+              required: false // Always make fields optional
             };
           }
           return acc;
@@ -225,7 +236,7 @@ const CreateOrder = () => {
   const addCustomMeasurement = () => {
     if (newCustomMeasurement.name && newCustomMeasurement.value) {
       setCustomMeasurements(prev => [...prev, { ...newCustomMeasurement, id: Date.now() }]);
-      setNewCustomMeasurement({ name: '', value: '', unit: 'inches' });
+      setNewCustomMeasurement({ name: '', value: '', unit: globalUnit });
     }
   };
 
@@ -658,9 +669,9 @@ const CreateOrder = () => {
                     onChange={(e) => setNewCustomMeasurement(prev => ({ ...prev, unit: e.target.value }))}
                     className="w-full p-2 border rounded text-sm"
                   >
-                    <option value="inches">inches</option>
-                    <option value="cm">cm</option>
-                    <option value="mm">mm</option>
+                    {measurementGlobalSettingsService.getAvailableUnits().map(unit => (
+                      <option key={unit.value} value={unit.value}>{unit.shortLabel}</option>
+                    ))}
                   </select>
                 </div>
                 <button
@@ -709,9 +720,9 @@ const CreateOrder = () => {
                           onChange={(e) => handleCustomMeasurementChange(index, 'unit', e.target.value)}
                           className="w-full p-2 border rounded text-sm"
                         >
-                          <option value="inches">inches</option>
-                          <option value="cm">cm</option>
-                          <option value="mm">mm</option>
+                          {measurementGlobalSettingsService.getAvailableUnits().map(unit => (
+                            <option key={unit.value} value={unit.value}>{unit.shortLabel}</option>
+                          ))}
                         </select>
                       </div>
                       <button
