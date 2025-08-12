@@ -5,7 +5,7 @@ import { orderService } from '../services/orderService';
 import { customerService } from '../services/customerService';
 // eslint-disable-next-line no-unused-vars
 import { measurementService } from '../services/measurementService';
-import { db } from '../db';
+import { db, fixAllDataLinking, checkSyncStatus, validateOrderCustomerLinks, cleanupOrphanedOrderItems } from '../db';
 import SyncDebug from '../components/SyncDebug';
 
 const OfflineData = () => {
@@ -14,11 +14,13 @@ const OfflineData = () => {
   const [pendingItems, setPendingItems] = React.useState([]);
   const [lastSync, setLastSync] = React.useState(null);
   const [syncErrors, setSyncErrors] = React.useState([]);
+  const [diagnosticsResults, setDiagnosticsResults] = React.useState(null);
+  const [isRunningDiagnostics, setIsRunningDiagnostics] = React.useState(false);
 
   // Load pending sync items from IndexedDB
   const loadPendingItems = async () => {
     try {
-      const tables = ['customers', 'orders', 'measurements', 'measurement_templates'];
+      const tables = ['customers', 'orders', 'measurements', 'order_items'];
       const items = [];
 
       for (const table of tables) {
@@ -153,6 +155,91 @@ const OfflineData = () => {
     }
   };
 
+  // Run comprehensive data diagnostics
+  const runDataDiagnostics = async () => {
+    setIsRunningDiagnostics(true);
+    try {
+      console.log('🔍 Running comprehensive data diagnostics...');
+      
+      // Get sync status
+      const syncStatus = await checkSyncStatus();
+      
+      // Get all data counts
+      const orders = await db.orders.toArray();
+      const customers = await db.customers.toArray();
+      const orderItems = await db.order_items.toArray();
+      const measurements = await db.measurements.toArray();
+      
+      // Check for orphaned orders (orders without valid customer_id)
+      const customerIds = new Set(customers.map(c => c.id));
+      const orphanedOrders = orders.filter(order => 
+        !order.customer_id || !customerIds.has(order.customer_id)
+      );
+      
+      // Check for orphaned order items (items without valid order_id)
+      const orderIds = new Set(orders.map(o => o.id));
+      const orphanedItems = orderItems.filter(item => 
+        !item.order_id || !orderIds.has(item.order_id)
+      );
+      
+      // Check for customers without names
+      const customersWithoutNames = customers.filter(c => !c.name || c.name.trim() === '');
+      
+      // Check for failed sync records
+      const failedOrders = orders.filter(o => o.sync_status === 'failed');
+      const failedCustomers = customers.filter(c => c.sync_status === 'failed');
+      const failedItems = orderItems.filter(i => i.sync_status === 'failed');
+      
+      const results = {
+        timestamp: new Date().toISOString(),
+        syncStatus,
+        counts: {
+          orders: orders.length,
+          customers: customers.length,
+          orderItems: orderItems.length,
+          measurements: measurements.length
+        },
+        issues: {
+          orphanedOrders: orphanedOrders.length,
+          orphanedItems: orphanedItems.length,
+          customersWithoutNames: customersWithoutNames.length,
+          failedRecords: failedOrders.length + failedCustomers.length + failedItems.length
+        },
+        details: {
+          orphanedOrders,
+          orphanedItems: orphanedItems.slice(0, 10), // Only show first 10
+          customersWithoutNames: customersWithoutNames.slice(0, 10),
+          failedOrders: failedOrders.slice(0, 10)
+        }
+      };
+      
+      setDiagnosticsResults(results);
+      console.log('✅ Diagnostics completed:', results);
+      
+    } catch (error) {
+      console.error('❌ Error running diagnostics:', error);
+      setDiagnosticsResults({ error: error.message });
+    } finally {
+      setIsRunningDiagnostics(false);
+    }
+  };
+  
+  // Run comprehensive fix
+  const runComprehensiveFix = async () => {
+    try {
+      console.log('🔧 Running comprehensive data linking fixes...');
+      const fixedCount = await fixAllDataLinking();
+      
+      // Refresh diagnostics and pending items
+      await runDataDiagnostics();
+      await loadPendingItems();
+      
+      alert(`✅ Fixed ${fixedCount} data linking issues!`);
+    } catch (error) {
+      console.error('❌ Error running comprehensive fix:', error);
+      alert('❌ Error running fix: ' + error.message);
+    }
+  };
 
   // Load pending items on component mount and set up refresh interval
   React.useEffect(() => {
@@ -270,6 +357,19 @@ const OfflineData = () => {
             
             <div className="flex space-x-3">
               <button
+                onClick={runDataDiagnostics}
+                disabled={isRunningDiagnostics}
+                className="px-4 py-2 rounded-lg font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors disabled:bg-gray-400"
+              >
+                {isRunningDiagnostics ? '🔍 Diagnosing...' : '🔍 Run Diagnostics'}
+              </button>
+              <button
+                onClick={runComprehensiveFix}
+                className="px-4 py-2 rounded-lg font-medium bg-green-600 text-white hover:bg-green-700 transition-colors"
+              >
+                🔧 Fix All Issues
+              </button>
+              <button
                 onClick={clearSpecificPendingItems}
                 className="px-4 py-2 rounded-lg font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
               >
@@ -289,6 +389,125 @@ const OfflineData = () => {
             </div>
           </div>
         </div>
+
+        {/* Diagnostics Results Panel */}
+        {diagnosticsResults && (
+          <div className="bg-white rounded-lg shadow-sm border mb-6">
+            <div className="px-6 py-4 border-b">
+              <h3 className="text-lg font-medium text-gray-900">
+                🔍 Data Linking Diagnostics
+              </h3>
+              <p className="text-sm text-gray-500">
+                {diagnosticsResults.error ? 'Error occurred during diagnostics' : `Last run: ${new Date(diagnosticsResults.timestamp).toLocaleString()}`}
+              </p>
+            </div>
+            
+            {diagnosticsResults.error ? (
+              <div className="p-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-red-800 mb-2">❌ Diagnostics Error</h4>
+                  <p className="text-sm text-red-700">{diagnosticsResults.error}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-blue-800">Total Records</h4>
+                    <p className="text-2xl font-bold text-blue-900">
+                      {diagnosticsResults.counts.orders + diagnosticsResults.counts.customers + diagnosticsResults.counts.orderItems + diagnosticsResults.counts.measurements}
+                    </p>
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-yellow-800">Orphaned Orders</h4>
+                    <p className="text-2xl font-bold text-yellow-900">{diagnosticsResults.issues.orphanedOrders}</p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-orange-800">Orphaned Items</h4>
+                    <p className="text-2xl font-bold text-orange-900">{diagnosticsResults.issues.orphanedItems}</p>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-red-800">Failed Records</h4>
+                    <p className="text-2xl font-bold text-red-900">{diagnosticsResults.issues.failedRecords}</p>
+                  </div>
+                </div>
+                
+                {/* Detailed Issues */}
+                {(diagnosticsResults.issues.orphanedOrders > 0 || 
+                  diagnosticsResults.issues.orphanedItems > 0 || 
+                  diagnosticsResults.issues.failedRecords > 0) && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-medium text-gray-800">Issue Details:</h4>
+                    
+                    {diagnosticsResults.issues.orphanedOrders > 0 && (
+                      <div className="bg-yellow-50 p-4 rounded-lg">
+                        <h5 className="text-sm font-medium text-yellow-800 mb-2">
+                          ⚠️ Orphaned Orders ({diagnosticsResults.issues.orphanedOrders})
+                        </h5>
+                        <p className="text-sm text-yellow-700 mb-2">
+                          These orders have missing or invalid customer references.
+                        </p>
+                        {diagnosticsResults.details.orphanedOrders.slice(0, 3).map(order => (
+                          <div key={order.id} className="text-xs text-yellow-600 font-mono">
+                            ID: {order.id} | Customer ID: {order.customer_id || 'missing'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {diagnosticsResults.issues.orphanedItems > 0 && (
+                      <div className="bg-orange-50 p-4 rounded-lg">
+                        <h5 className="text-sm font-medium text-orange-800 mb-2">
+                          ⚠️ Orphaned Order Items ({diagnosticsResults.issues.orphanedItems})
+                        </h5>
+                        <p className="text-sm text-orange-700 mb-2">
+                          These order items reference orders that don't exist.
+                        </p>
+                        {diagnosticsResults.details.orphanedItems.slice(0, 3).map(item => (
+                          <div key={item.id} className="text-xs text-orange-600 font-mono">
+                            ID: {item.id} | Order ID: {item.order_id}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {diagnosticsResults.issues.failedRecords > 0 && (
+                      <div className="bg-red-50 p-4 rounded-lg">
+                        <h5 className="text-sm font-medium text-red-800 mb-2">
+                          ❌ Failed Sync Records ({diagnosticsResults.issues.failedRecords})
+                        </h5>
+                        <p className="text-sm text-red-700 mb-2">
+                          These records failed to sync and need attention.
+                        </p>
+                        {diagnosticsResults.details.failedOrders.slice(0, 3).map(order => (
+                          <div key={order.id} className="text-xs text-red-600 font-mono">
+                            Order ID: {order.id} | Error: {order.error_reason || 'Unknown'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* All Good Message */}
+                {diagnosticsResults.issues.orphanedOrders === 0 && 
+                 diagnosticsResults.issues.orphanedItems === 0 && 
+                 diagnosticsResults.issues.failedRecords === 0 && (
+                  <div className="bg-green-50 p-4 rounded-lg text-center">
+                    <div className="text-4xl mb-2">✅</div>
+                    <h4 className="text-lg font-medium text-green-800 mb-1">
+                      All Data Links Are Healthy!
+                    </h4>
+                    <p className="text-sm text-green-700">
+                      No data linking issues were found. Your orders are properly connected to customers and items.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Pending Items List */}
         <div className="bg-white rounded-lg shadow-sm border">

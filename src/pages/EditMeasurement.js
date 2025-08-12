@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { measurementService } from '../services/measurementService';
-import { measurementTemplateService } from '../services/measurementTemplateService';
 import { customerService } from '../services/customerService';
+import { getAllMeasurementFields } from '../config/measurementFields';
 import { FaSave, FaTimes, FaRuler, FaSpinner, FaArrowLeft } from 'react-icons/fa';
+import ButtonColorSelector from '../components/ButtonColorSelector';
 
 const EditMeasurement = () => {
   const params = useParams();
@@ -101,73 +102,29 @@ const EditMeasurement = () => {
         setMeasurement(targetMeasurement);
         console.log('✅ Measurement state set');
 
-        // Load templates and create default ones if needed
-        console.log('📝 Loading measurement templates...');
-        const defaultTemplatesPromise = measurementTemplateService.getDefaultTemplates();
-        await Promise.race([defaultTemplatesPromise, timeoutPromise]);
+        // Use static measurement fields instead of templates
+        console.log('📝 Loading static measurement fields...');
+        const staticFields = getAllMeasurementFields();
         
-        const templatesPromise = measurementTemplateService.getAll();
-        const templates = await Promise.race([templatesPromise, timeoutPromise]);
-        
-        console.log('✅ Available templates loaded:', templates);
-        
-        // If no templates are loaded, create a basic fallback template
-        if (!templates || templates.length === 0) {
-          console.log('⚠️ No templates found, creating fallback template');
-          const fallbackTemplate = {
-            name: 'Basic Measurements',
-            fields: [
-              { name: 'chest', label: 'Chest', unit: 'inches', required: false },
-              { name: 'waist', label: 'Waist', unit: 'inches', required: false },
-              { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: false },
-              { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: false },
-              { name: 'shirt_length', label: 'Shirt Length', unit: 'inches', required: false },
-              { name: 'inseam', label: 'Inseam', unit: 'inches', required: false },
-              { name: 'hip', label: 'Hip', unit: 'inches', required: false }
-            ]
-          };
-          setTemplate(fallbackTemplate);
-          
-          // Initialize form data with fallback template
-          const initialFormData = {};
-          fallbackTemplate.fields.forEach(field => {
-            const existingValue = targetMeasurement.data && targetMeasurement.data[field.name];
-            if (existingValue && typeof existingValue === 'object' && existingValue.value !== undefined) {
-              initialFormData[field.name] = existingValue.value;
-            } else if (existingValue !== null && existingValue !== undefined) {
-              initialFormData[field.name] = existingValue;
-            } else {
-              initialFormData[field.name] = '';
-            }
-          });
-          setFormData(initialFormData);
-          console.log('✅ Fallback template and form data initialized');
-          return; // Exit early with fallback template
-        }
-        
-        // Create a comprehensive template that includes ALL fields from ALL templates
+        // Create template from static fields
         const allFields = new Map();
         
-        // Add fields from all templates to create a universal measurement set
-        templates.forEach(template => {
-          if (template && template.fields && Array.isArray(template.fields)) {
-            template.fields.forEach(field => {
-              if (field && field.name && field.label) {
-                // Use field name as key to avoid duplicates
-                if (!allFields.has(field.name)) {
-                  allFields.set(field.name, {
-                    name: field.name,
-                    label: field.label,
-                    unit: field.unit || 'inches',
-                    required: false // Force all fields to be optional
-                  });
-                }
-              }
+        // Add static measurement fields
+        staticFields.forEach(field => {
+          if (field && field.name && field.label) {
+            allFields.set(field.name, {
+              name: field.name,
+              label: field.label,
+              unit: field.unit || 'inches',
+              type: field.type || 'number',
+              category: field.category || 'other',
+              options: field.options || null,
+              required: false // All fields are optional
             });
           }
         });
         
-        // Also include any existing fields from the measurement data that might not be in templates
+        // Also include any existing fields from the measurement data that might not be in static fields
         if (targetMeasurement.data) {
           Object.keys(targetMeasurement.data).forEach(key => {
             if (!allFields.has(key)) {
@@ -182,19 +139,19 @@ const EditMeasurement = () => {
         }
         
         // Convert Map to array for the template
-        const comprehensiveTemplate = {
+        const universalTemplate = {
           name: 'Universal Measurements',
           fields: Array.from(allFields.values()).sort((a, b) => a.label.localeCompare(b.label))
         };
         
-        console.log('Comprehensive template with all fields:', comprehensiveTemplate);
-        setTemplate(comprehensiveTemplate);
+        console.log('Universal template with static fields:', universalTemplate);
+        setTemplate(universalTemplate);
 
-        // Initialize form data - show ALL fields from comprehensive template, including empty ones
+        // Initialize form data - show ALL fields from template, including empty ones
         const initialFormData = {};
         
-        // Initialize all comprehensive template fields (including empty ones)
-        comprehensiveTemplate.fields.forEach(field => {
+        // Initialize all template fields (including empty ones)
+        universalTemplate.fields.forEach(field => {
           const existingValue = targetMeasurement.data && targetMeasurement.data[field.name];
           if (existingValue && typeof existingValue === 'object' && existingValue.value !== undefined) {
             initialFormData[field.name] = existingValue.value;
@@ -265,17 +222,15 @@ const EditMeasurement = () => {
       const measurementData = {};
       template.fields.forEach(field => {
         const value = formData[field.name];
-        // Include field even if empty, but with appropriate value
-        if (value !== '' && value !== null && value !== undefined && value !== '0') {
+        if (value !== '' && value !== null && value !== undefined) {
           measurementData[field.name] = {
-            value: parseFloat(value),
-            unit: field.unit || 'inches'
+            value: field.type === 'number' ? parseFloat(value) : value,
+            unit: field.unit || (field.type === 'select' ? '' : 'inches')
           };
         } else {
-          // Keep track of empty fields too
           measurementData[field.name] = {
             value: null,
-            unit: field.unit || 'inches'
+            unit: field.unit || (field.type === 'select' ? '' : 'inches')
           };
         }
       });
@@ -385,53 +340,129 @@ const EditMeasurement = () => {
             </Link>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Measurement Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {template.fields.map((field) => {
-                const hasValue = formData[field.name] && formData[field.name] !== '' && formData[field.name] !== '0';
-                return (
-                  <div key={field.name} className={`relative ${hasValue ? 'bg-green-50 border border-green-200 rounded-lg p-3' : ''}`}>
-                    <label 
-                      htmlFor={field.name} 
-                      className="block text-sm font-medium text-gray-700 mb-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>
-                          {field.label} {field.required && <span className="text-red-500">*</span>}
-                          {field.unit && <span className="text-gray-500 ml-1">({field.unit})</span>}
-                        </span>
-                        {hasValue && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                            ✓ Filled
-                          </span>
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Button Color Section - Third separate section */}
+            {template.fields
+              .filter((field) => field.category === 'button')
+              .map((field) => (
+                <ButtonColorSelector
+                  key={field.name}
+                  name={field.name}
+                  label={field.label}
+                  value={formData[field.name] || ''}
+                  onChange={handleChange}
+                  options={field.options}
+                />
+              ))}
+
+            {/* Shirt and Pant Measurements in Two Columns */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Shirt Column */}
+              <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center">
+                  👕 Shirt Measurements
+                </h3>
+                <div className="space-y-4">
+                  {template.fields
+                    .filter((field) => field.category === 'shirt')
+                    .map((field) => {
+                      const hasValue = formData[field.name] && formData[field.name] !== '' && formData[field.name] !== '0';
+                      return (
+                      <div key={field.name} className={`relative ${hasValue ? 'bg-green-50 border border-green-200 rounded-lg p-3' : ''}`}>
+                        <label 
+                          htmlFor={field.name} 
+                          className="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                              {field.unit && <span className="text-gray-500 ml-1">({field.unit})</span>}
+                            </span>
+                            {hasValue && (
+                              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                                ✓ Filled
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          id={field.name}
+                          name={field.name}
+                          value={formData[field.name] || ''}
+                          onChange={handleChange}
+                          className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                            errors[field.name] 
+                              ? 'border-red-500 bg-red-50' 
+                              : hasValue 
+                                ? 'border-green-300 bg-green-50 font-semibold'
+                                : 'border-gray-300 hover:border-gray-400 bg-white'
+                          }`}
+                          placeholder={`Enter ${field.label.toLowerCase()}${hasValue ? '' : ' (empty)'}`}
+                        />
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
                         )}
                       </div>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      id={field.name}
-                      name={field.name}
-                      value={formData[field.name] || ''}
-                      onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${
-                        errors[field.name] 
-                          ? 'border-red-500 bg-red-50' 
-                          : hasValue 
-                            ? 'border-green-300 bg-green-50 font-semibold'
-                            : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                      }`}
-                      placeholder={`Enter ${field.label.toLowerCase()}${hasValue ? '' : ' (empty)'}`}
-                    />
-                    {errors[field.name] && (
-                      <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      );
+                    })}
+                </div>
+              </div>
 
+              {/* Pant Column */}
+              <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                <h3 className="text-xl font-bold text-green-800 mb-4 flex items-center">
+                  👖 Pant Measurements
+                </h3>
+                <div className="space-y-4">
+                  {template.fields
+                    .filter((field) => field.category === 'pant')
+                    .map((field) => {
+                      const hasValue = formData[field.name] && formData[field.name] !== '' && formData[field.name] !== '0';
+                      return (
+                      <div key={field.name} className={`relative ${hasValue ? 'bg-green-100 border border-green-300 rounded-lg p-3' : ''}`}>
+                        <label 
+                          htmlFor={field.name} 
+                          className="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                              {field.unit && <span className="text-gray-500 ml-1">({field.unit})</span>}
+                            </span>
+                            {hasValue && (
+                              <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">
+                                ✓ Filled
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          id={field.name}
+                          name={field.name}
+                          value={formData[field.name] || ''}
+                          onChange={handleChange}
+                          className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 ${
+                            errors[field.name] 
+                              ? 'border-red-500 bg-red-50' 
+                              : hasValue 
+                                ? 'border-green-400 bg-green-100 font-semibold'
+                                : 'border-gray-300 hover:border-gray-400 bg-white'
+                          }`}
+                          placeholder={`Enter ${field.label.toLowerCase()}${hasValue ? '' : ' (empty)'}`}
+                        />
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
+                        )}
+                      </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
             {/* Summary */}
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
               <h3 className="font-semibold text-gray-800 mb-2">Measurement Summary</h3>

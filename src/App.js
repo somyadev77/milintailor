@@ -5,6 +5,9 @@ import SyncStatus from './components/SyncStatus';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import InstallPrompt from './components/InstallPrompt';
+import AutoDataFix from './components/AutoDataFix';
+import { usePreventNumberScroll } from './hooks/usePreventNumberScroll';
+import './styles/global.css';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import NewCustomer from './pages/NewCustomer';
@@ -15,14 +18,37 @@ import Orders from './pages/Orders';
 import CreateOrder from './pages/CreateOrder'; // Change from NewOrder to CreateOrder
 import MeasurementSettings from './pages/MeasurementSettings';
 import OfflineData from './pages/OfflineData';
-import { db } from './db';
+import MeasurementDataViewer from './components/MeasurementDataViewer';
+import { db, forceSyncWithSupabase } from './db';
 
 function App() {
+  // Prevent mouse wheel scroll on number inputs globally
+  usePreventNumberScroll();
+
   useEffect(() => {
-    // Initialize the database
-    db.open().catch(err => {
-      console.error('Failed to open database:', err);
-    });
+    const initializeApp = async () => {
+      try {
+        // Initialize the database
+        await db.open();
+        console.log('📱 App started - initializing sync...');
+        
+        // Force sync on app startup if online
+        if (navigator.onLine) {
+          console.log('🔄 App startup - forcing sync to get latest data...');
+          await forceSyncWithSupabase();
+          console.log('✅ App startup sync completed');
+          
+          // Dispatch a custom event to trigger data refresh in components
+          window.dispatchEvent(new CustomEvent('appSyncComplete'));
+        } else {
+          console.log('📴 App started offline - will sync when online');
+        }
+      } catch (err) {
+        console.error('Failed to initialize app:', err);
+      }
+    };
+    
+    initializeApp();
   }, []);
 
   return (
@@ -30,6 +56,7 @@ function App() {
       <Router>
         <SyncStatus />
         <InstallPrompt />
+        <AutoDataFix />
         <Layout>
           <Routes>
             <Route
@@ -125,6 +152,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <OfflineData />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/measurement-data-viewer"
+              element={
+                <ProtectedRoute>
+                  <MeasurementDataViewer />
                 </ProtectedRoute>
               }
             />

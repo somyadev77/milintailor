@@ -104,11 +104,23 @@ export const customerService = {
   // Get customers with their measurements
   async getWithMeasurements(id) {
     try {
+      console.log(`🔍 Getting customer with measurements: ${id}`);
+      
+      // First, ensure we have synced data by calling getAll() which handles sync
+      await this.getAll();
+      
+      // Now get the customer from local database
       const customer = await this.getById(id);
-      if (!customer) return null;
+      if (!customer) {
+        console.warn(`⚠️ Customer ${id} not found after sync`);
+        return null;
+      }
+      
+      console.log(`✅ Found customer: ${customer.name}`);
 
       // Use measurementService to get measurements with Supabase sync
       const measurements = await measurementService.getByCustomer(id);
+      console.log(`📁 Found ${measurements.length} measurement records for customer ${id}`);
 
       return { ...customer, measurements };
     } catch (error) {

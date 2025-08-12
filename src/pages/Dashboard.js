@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FaUsers, FaShoppingCart, FaMoneyBillWave, FaClock } from 'react-icons/fa';
 import { orderService } from '../services/orderService';
+import { formatCustomerName } from '../utils/customerNameFormatter';
 
 const Dashboard = () => {
   const [metrics, setMetrics] = useState({
@@ -24,7 +25,7 @@ const Dashboard = () => {
         
         // Fetch recent orders
         const allOrders = await orderService.getAll();
-        setRecentOrders(allOrders.slice(0, 5)); // Get latest 5 orders
+        setRecentOrders(allOrders.slice(0, 3)); // Get latest 3 orders
         
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -59,11 +60,11 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800">Dashboard</h1>
+    <div className="p-4 sm:p-6">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-800">Dashboard</h1>
 
       {/* Key Metrics - Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-md flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-gray-500">Total Customers</div>
@@ -96,8 +97,8 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Orders */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Recent Orders</h2>
+        <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-lg shadow-md">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4 text-gray-800">Recent Orders</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full leading-normal">
               <thead>
@@ -121,7 +122,7 @@ const Dashboard = () => {
                   <tr key={order.id}>
                     <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
                       <Link to={`/orders/${order.id}`} className="text-blue-600 hover:underline">
-                        {order.customer}
+                        {formatCustomerName(order.customer)}
                       </Link>
                     </td>
                     <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
@@ -145,9 +146,9 @@ const Dashboard = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="lg:col-span-1 bg-white p-6 rounded-lg shadow-md flex flex-col justify-between">
+        <div className="lg:col-span-1 bg-white p-4 sm:p-6 rounded-lg shadow-md flex flex-col justify-between">
           <div>
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">Quick Actions</h2>
+            <h2 className="text-lg sm:text-xl font-semibold mb-4 text-gray-800">Quick Actions</h2>
             <Link
               to="/orders/new"
               className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"

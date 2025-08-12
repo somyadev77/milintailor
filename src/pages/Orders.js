@@ -4,7 +4,49 @@ import { Link, useParams } from 'react-router-dom';
 import { FaSearch, FaEdit, FaTrash, FaReceipt, FaPrint, FaTimes, FaSpinner, FaPlus, FaEye, FaFilePdf } from 'react-icons/fa';
 import { orderService } from '../services/orderService';
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
+import { formatCustomerName } from '../utils/customerNameFormatter';
+import MeasurementPreviewModal from '../components/MeasurementPreviewModal';
+import MeasurementPdfPreviewModal from '../components/MeasurementPdfPreviewModal';
+import { getAllMeasurementFields } from '../config/measurementFields';
+
+// Helper function to extract items from order data
+function getOrderItems(order) {
+  // Prioritize order.items if available (populated by orderService.getAll from receipt_data)
+  if (order.items && order.items.length > 0) {
+    return order.items;
+  }
+
+  // Fallback to parsing receipt_data if order.items is empty or not available
+  if (order.receipt_data) {
+    try {
+      const receiptData = typeof order.receipt_data === 'string'
+        ? JSON.parse(order.receipt_data)
+        : order.receipt_data;
+
+      if (receiptData && receiptData.items && Array.isArray(receiptData.items)) {
+        return receiptData.items;
+      }
+
+      // This case (Array.isArray(receiptData)) seems like a legacy format,
+      // but keeping it for robustness if it's still in use.
+      if (Array.isArray(receiptData)) {
+        return receiptData;
+      }
+    } catch (error) {
+      console.error('Error parsing receipt_data:', error);
+    }
+  }
+  
+  // Fallback to order.items if available
+  if (order.items && order.items.length > 0) {
+    return order.items;
+  }
+  
+  // Return empty array if no items are found
+  return [];
+}
 
 const Orders = () => {
   const { id: orderId } = useParams(); // Get order ID from URL if present
@@ -16,13 +58,18 @@ const Orders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  
+
   // Load orders from database
   const loadOrders = async () => {
     try {
       setLoading(true);
       setError(null);
+      
+      console.log('🔄 Fetching fresh data from Supabase...');
       const ordersData = await orderService.getAll();
       setOrders(ordersData);
+      console.log('✅ Data synchronized from Supabase!');
     } catch (err) {
       console.error('Error loading orders:', err);
       setError('Failed to load orders. Please try again.');
@@ -33,6 +80,18 @@ const Orders = () => {
 
   useEffect(() => {
     loadOrders();
+    
+    // Listen for app sync completion to refresh data
+    const handleAppSyncComplete = () => {
+      console.log('📱 App sync completed - refreshing orders data...');
+      loadOrders();
+    };
+    
+    window.addEventListener('appSyncComplete', handleAppSyncComplete);
+    
+    return () => {
+      window.removeEventListener('appSyncComplete', handleAppSyncComplete);
+    };
   }, []);
 
   // Auto-open order details if order ID is provided in URL
@@ -64,6 +123,10 @@ const Orders = () => {
 
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [orderToPrint, setOrderToPrint] = useState(null);
+  const [isMeasurementPreviewOpen, setIsMeasurementPreviewOpen] = useState(false);
+  const [orderToMeasure, setOrderToMeasure] = useState(null);
+  const [isMeasurementPdfPreviewOpen, setIsMeasurementPdfPreviewOpen] = useState(false);
+  const [measurementPdfData, setMeasurementPdfData] = useState(null);
 
   const handlePrintPreview = (order) => {
     setOrderToPrint(order);
@@ -75,13 +138,440 @@ const Orders = () => {
     setIsPrintPreviewOpen(true);
   };
 
-const handlePrintReceipt = (order) => {
+  const handleMeasurementPreview = (order) => {
+    setOrderToMeasure(order);
+    setIsMeasurementPreviewOpen(true);
+  };
+
+  const handleMeasurementPdfPreview = async (order) => {
+    try {
+      const pdfData = await generateMeasurementPdfData(order);
+      if (pdfData) {
+        setMeasurementPdfData(pdfData);
+        setIsMeasurementPdfPreviewOpen(true);
+      }
+    } catch (error) {
+      console.error('Error generating measurement PDF preview:', error);
+      alert('Failed to generate measurement PDF preview. Please try again.');
+    }
+  };
+
+  const generateMeasurementPdfData = async (order) => {
+    try {
+      // Get measurement data from receipt_data or customer_measurements
+      let measurements = null;
+      
+      // First try to get from receipt_data (new format)
+      if (order.receipt_data) {
+        const receiptData = typeof order.receipt_data === 'string' ? JSON.parse(order.receipt_data) : order.receipt_data;
+        if (receiptData.measurements) {
+          measurements = receiptData.measurements;
+        }
+      }
+      
+      // Fallback to old format
+      if (!measurements && order.customer_measurements?.[0]?.data) {
+        measurements = { universal: order.customer_measurements[0].data, include_shirt: true, include_pant: true };
+      }
+      
+      if (!measurements) {
+        alert('No measurement data found for this customer.');
+        return;
+      }
+
+      const includeShirt = measurements.include_shirt !== false;
+      const includePant = measurements.include_pant !== false;
+
+      // --- Define Measurement Keys ---
+      const PANT_KEYS = ['pant_length', 'waist', 'seat', 'thigh_loose', 'knee_loose', 'bottom'];
+      const SHIRT_KEYS = ['shirt_length', 'shoulder', 'sleeve', 'sleeve_loose', 'chest', 'shirt_waist', 'collar'];
+      const BUTTON_KEYS = ['button_color'];
+
+      // --- Process measurements by category ---
+      const processedMeasurements = {
+        shirt: [],
+        pant: [],
+        button: [],
+        custom: []
+      };
+
+      // Function to process measurement value
+      const formatMeasurementValue = (value) => {
+        if (value === null || value === undefined || value === '') return null;
+        if (typeof value === 'object') {
+          if (!value.value || value.value === '') return null;
+          return `${value.value} ${value.unit || ''}`.trim();
+        }
+        return String(value);
+      };
+
+      // Special function for button color (no units)
+      const formatButtonColor = (value) => {
+        if (value === null || value === undefined || value === '') return null;
+        if (typeof value === 'object') {
+          if (!value.value || value.value === '') return null;
+          return String(value.value); // Only return the value, no unit
+        }
+        return String(value);
+      };
+
+      // Function to format key name using bilingual labels from config
+      const formatKeyName = (key) => {
+        const measurementFields = getAllMeasurementFields();
+        const field = measurementFields.find(f => f.name === key);
+        if (field && field.label) {
+          // Split the bilingual label and return as separate lines
+          const parts = field.label.split(' - ');
+          if (parts.length === 2) {
+            return {
+              gujarati: parts[0].trim(),
+              english: parts[1].trim()
+            };
+          }
+          return {
+            gujarati: field.label,
+            english: field.label
+          };
+        }
+        // Fallback to formatted key name
+        const formatted = key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+        return {
+          gujarati: formatted,
+          english: formatted
+        };
+      };
+
+      // Process shirt measurements
+      if (measurements.shirt && includeShirt) {
+        Object.entries(measurements.shirt).forEach(([key, value]) => {
+          const formattedValue = formatMeasurementValue(value);
+          if (formattedValue) {
+            processedMeasurements.shirt.push({
+              key: formatKeyName(key),
+              value: formattedValue
+            });
+          }
+        });
+      }
+
+      // Process pant measurements
+      if (measurements.pant && includePant) {
+        Object.entries(measurements.pant).forEach(([key, value]) => {
+          const formattedValue = formatMeasurementValue(value);
+          if (formattedValue) {
+            processedMeasurements.pant.push({
+              key: formatKeyName(key),
+              value: formattedValue
+            });
+          }
+        });
+      }
+
+      // Process button measurements
+      if (measurements.button && includeShirt) {
+        Object.entries(measurements.button).forEach(([key, value]) => {
+          // Use special formatting for button color (no units)
+          const formattedValue = key.toLowerCase().includes('color') ? formatButtonColor(value) : formatMeasurementValue(value);
+          if (formattedValue) {
+            processedMeasurements.button.push({
+              key: formatKeyName(key),
+              value: formattedValue
+            });
+          }
+        });
+      }
+
+      // Process custom measurements
+      if (measurements.custom && Array.isArray(measurements.custom)) {
+        measurements.custom.forEach(custom => {
+          if (custom.name && custom.value) {
+            processedMeasurements.custom.push({
+              key: custom.name,
+              value: `${custom.value} ${custom.unit || ''}`.trim()
+            });
+          }
+        });
+      }
+
+      // Handle legacy universal measurements
+      if (measurements.universal) {
+        Object.entries(measurements.universal)
+          .filter(([key, _]) => isNaN(parseInt(key, 10))) // Ignore numeric keys
+          .forEach(([key, value]) => {
+            const formattedValue = formatMeasurementValue(value);
+            if (formattedValue) {
+              const measurement = {
+                key: formatKeyName(key),
+                value: formattedValue
+              };
+              
+              if (SHIRT_KEYS.includes(key) && includeShirt) {
+                processedMeasurements.shirt.push(measurement);
+              } else if (PANT_KEYS.includes(key) && includePant) {
+                processedMeasurements.pant.push(measurement);
+              } else if (BUTTON_KEYS.includes(key) && includeShirt) {
+                // Use special formatting for button measurements
+                const buttonMeasurement = {
+                  key: formatKeyName(key),
+                  value: key.toLowerCase().includes('color') ? formatButtonColor(value) : formattedValue
+                };
+                processedMeasurements.button.push(buttonMeasurement);
+              } else {
+                processedMeasurements.custom.push(measurement);
+              }
+            }
+          });
+      }
+
+      // Add button measurements to shirt measurements
+      if (includeShirt) {
+        processedMeasurements.shirt.push(...processedMeasurements.button);
+      }
+
+      // Distribute custom measurements to the strip with fewer measurements
+      const shirtCount = processedMeasurements.shirt.length;
+      const pantCount = processedMeasurements.pant.length;
+      
+      if (processedMeasurements.custom.length > 0) {
+        if (includeShirt && !includePant) {
+            processedMeasurements.shirt.push(...processedMeasurements.custom);
+        } else if (!includeShirt && includePant) {
+            processedMeasurements.pant.push(...processedMeasurements.custom);
+        } else { // both included or neither (though caught earlier)
+            if (shirtCount <= pantCount) {
+                processedMeasurements.shirt.push(...processedMeasurements.custom);
+            } else {
+                processedMeasurements.pant.push(...processedMeasurements.custom);
+            }
+        }
+      }
+
+      // Check if we have any measurements to print
+      const totalMeasurements = processedMeasurements.shirt.length + processedMeasurements.pant.length;
+      if (totalMeasurements === 0) {
+        alert('No valid measurements found to print.');
+        return;
+      }
+
+      // Generate HTML for two strips
+      const generateStripHTML = (title, measurements, stripClass) => {
+        if (measurements.length === 0) return '';
+        
+        const keysHTML = measurements.map(item => {
+          if (typeof item.key === 'object') {
+            return `<th><div class="gujarati-text">${item.key.gujarati}</div><div class="english-text">${item.key.english}</div></th>`;
+          }
+          return `<th>${item.key}</th>`;
+        }).join('');
+        const valuesHTML = measurements.map(item => `<td>${item.value}</td>`).join('');
+        
+        return `
+          <div class="strip-container ${stripClass}">
+            <div class="strip-title">${title}</div>
+            <div style="overflow-x: auto;">
+              <table class="measurements-table">
+                <tbody>
+                  <tr>${keysHTML}</tr>
+                  <tr>${valuesHTML}</tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      };
+
+      const shirtStripHTML = includeShirt ? generateStripHTML('Shirt Measurements', processedMeasurements.shirt, 'shirt-strip') : '';
+      const pantStripHTML = includePant ? generateStripHTML('Pant Measurements', processedMeasurements.pant, 'pant-strip') : '';
+
+      const slipHTML = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; font-size: 8pt; margin: 0; padding: 0; }
+              .slip-container { 
+                min-width: 400px;
+                max-width: 500px;
+                padding: 6px; 
+                border: 1px solid #000; 
+                margin: 4px; 
+                break-inside: avoid; 
+              }
+              .header {
+                border-bottom: 1px solid #ccc;
+                padding-bottom: 2px;
+                margin-bottom: 3px;
+              }
+              .header-line {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 8pt;
+                font-weight: bold;
+              }
+              .shop-name { flex: 1; text-align: center; font-size: 10pt; }
+              .customer-info { flex: 1; text-align: left; }
+              .order-info { flex: 1; text-align: right; }
+              .strip-container {
+                margin-bottom: 8px;
+                border: 1px solid #ddd;
+                border-radius: 3px;
+              }
+              .shirt-strip {
+                background-color: #e3f2fd;
+              }
+              .pant-strip {
+                background-color: #e8f5e8;
+              }
+              .strip-title { 
+                text-align: center; 
+                font-weight: bold; 
+                font-size: 9pt; 
+                margin-bottom: 4px;
+                padding: 4px;
+                background-color: rgba(0,0,0,0.1);
+              }
+              .measurements-table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                font-size: 8pt; 
+                table-layout: fixed; 
+              }
+              .measurements-table th, .measurements-table td { 
+                border: 1px solid #ccc; 
+                padding: 2px 1px; 
+                text-align: center; 
+                vertical-align: middle;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                overflow: hidden;
+              }
+              .measurements-table th { 
+                background-color: #f2f2f2; 
+                font-weight: bold;
+                line-height: 1.3;
+                height: auto;
+                min-height: 40px;
+                max-width: 120px;
+                width: auto;
+                padding: 6px 4px;
+                vertical-align: top;
+                text-align: center;
+              }
+              .measurements-table td { 
+                font-weight: bold;
+                font-size: 9pt;
+                max-width: 120px;
+                width: auto;
+                padding: 4px 4px;
+                line-height: 1.2;
+                text-align: center;
+                vertical-align: middle;
+              }
+              .gujarati-text {
+                font-size: 9pt;
+                font-weight: bold;
+                line-height: 1.2;
+                margin-bottom: 3px;
+                color: #333;
+                white-space: nowrap;
+                overflow: visible;
+                text-overflow: clip;
+                display: block;
+                height: auto;
+              }
+              .english-text {
+                font-size: 8pt;
+                font-weight: normal;
+                line-height: 1.2;
+                color: #666;
+                white-space: nowrap;
+                overflow: visible;
+                text-overflow: clip;
+                display: block;
+                height: auto;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="slip-container">
+              <div class="header">
+                <div class="header-line">
+                  <div class="customer-info">Customer: ${formatCustomerName(order.customer)}</div>
+                  <div class="shop-name">MILIN TAILOR</div>
+                  <div class="order-info">Order ID: ${order.sequence_id || order.id || 'N/A'}</div>
+                </div>
+              </div>
+              ${shirtStripHTML}
+              ${pantStripHTML}
+            </div>
+          </body>
+        </html>
+      `;
+
+      // --- Generate PDF ---
+      const element = document.createElement('div');
+      element.style.position = 'absolute';
+      element.style.left = '-9999px';
+      element.style.width = '820px'; // Match max-width
+      element.innerHTML = slipHTML;
+      document.body.appendChild(element);
+
+      const slipContainer = element.querySelector('.slip-container');
+      const canvas = await html2canvas(slipContainer, { scale: 2 });
+      
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [canvas.width + 20, canvas.height + 20]
+      });
+
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, canvas.width, canvas.height);
+
+      document.body.removeChild(element);
+      
+      return {
+        pdf,
+        slipHTML,
+        customerName: formatCustomerName(order.customer),
+        orderId: order.sequence_id || (order.id ? order.id.substring(0, 8) : 'N_A')
+      };
+      
+    } catch (error) {
+      console.error('Error generating measurement PDF:', error);
+      alert('Failed to generate measurement PDF. Please try again.');
+      return null;
+    }
+  };
+
+  const handlePrintMeasurement = async (order) => {
+    try {
+      const pdfData = await generateMeasurementPdfData(order);
+      if (pdfData) {
+        const { pdf, customerName, orderId } = pdfData;
+        pdf.save(`${customerName.replace(/[^a-zA-Z0-9]/g, '_')}_${orderId}_measurements.pdf`);
+      }
+    } catch (error) {
+      console.error('Error downloading measurement PDF:', error);
+      alert('Failed to download measurement PDF. Please try again.');
+    }
+  };
+
+const handlePrintReceipt = async (order) => {
+    // Debug: Log order data to console
+    console.log('🖨️ Printing receipt for order:', order);
+    console.log('📦 Order items:', order.items);
+    console.log('📄 Receipt data:', order.receipt_data);
+    
+    // Get items using the helper function
+    const orderItems = getOrderItems(order);
+    console.log('✅ Final order items:', orderItems);
+    
     // Create a styled receipt element for printing
     const receiptHTML = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Receipt - ${order.customer?.name || order.customer || 'Unknown Customer'}</title>
+        <title>Receipt - ${formatCustomerName(order.customer)}</title>
         <style>
           * { box-sizing: border-box; }
           body {
@@ -263,8 +753,8 @@ const handlePrintReceipt = (order) => {
 
           <table class="customer-info">
             <tr>
-              <td><strong>Name:</strong><span class="detail-value">${order.customer?.name || order.customer || 'Unknown Customer'}</span></td>
-              <td><strong>Bill No.:</strong><span class="detail-value">${order.id ? order.id.substring(0, 5) : 'N/A'}</span></td>
+              <td><strong>Name:</strong><span class="detail-value">${formatCustomerName(order.customer)}</span></td>
+              <td><strong>Bill No.:</strong><span class="detail-value">${order.sequence_id || order.id || 'N/A'}</span></td>
             </tr>
             <tr>
               <td><strong>Delivery Date:</strong><span class="detail-value">${order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
@@ -283,26 +773,26 @@ const handlePrintReceipt = (order) => {
               </tr>
             </thead>
             <tbody>
-              ${order.items && order.items.length > 0 ? 
-                order.items.map((item, index) => {
-                  const quantity = item.quantity || 1;
-                  const rate = item.price || 0;
-                  const amount = quantity * rate;
-                  return `
-                    <tr>
-                        <td class="text-center">${index + 1}</td>
-                        <td>${item.product_name || item.name || 'N/A'}</td>
-                        <td class="text-center">${quantity}</td>
-                        <td class="text-right">₹ ${rate.toLocaleString()}</td>
-                        <td class="text-right">₹ ${amount.toLocaleString()}</td>
-                    </tr>
-                  `;
-                }).join('') : 
-                `<tr>
-                    <td class="text-center">1</td>
-                    <td colspan="4" class="text-center">No items specified</td>
-                </tr>`
-              }
+              ${orderItems && orderItems.length > 0 ?
+              orderItems.map((item, index) => {
+                const quantity = item.item_quantity || item.quantity || 1;
+                const rate = item.price || 0;
+                const amount = rate;
+                return `
+                  <tr>
+                      <td class="text-center">${index + 1}</td>
+                      <td>${item.item_name || item.product_name || item.name || 'N/A'}</td>
+                      <td class="text-center">${quantity}</td>
+                      <td class="text-right">₹ ${rate.toLocaleString()}</td>
+                      <td class="text-right">₹ ${amount.toLocaleString()}</td>
+                  </tr>
+                `;
+              }).join('') :
+              `<tr>
+                  <td class="text-center">1</td>
+                  <td colspan="4" class="text-center">No specific item added</td>
+              </tr>`
+            }
             </tbody>
             <tfoot>
               <tr>
@@ -332,285 +822,42 @@ const handlePrintReceipt = (order) => {
             </tr>
           </table>
         </div>
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        </script>
       </body>
       </html>
     `;
 
-    // Open print window
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(receiptHTML);
-    printWindow.document.close();
-  };
-
-const handleDownloadPDF = async (order) => {
-    // Create a styled receipt element for PDF generation
     const receiptElement = document.createElement('div');
-    receiptElement.style.cssText = `
-      font-family: 'Roboto', Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background-color: #fff;
-      width: 800px;
-      box-sizing: border-box;
-    `;
-    
-    receiptElement.innerHTML = `
-      <style>
-        * { box-sizing: border-box; }
-        .receipt-container {
-          border: 5px double #800000;
-          padding: 25px;
-          background: #fff;
-          font-family: 'Roboto', Arial, sans-serif;
-        }
-        .header {
-          border-bottom: 2px solid #800000;
-          padding-bottom: 15px;
-          margin-bottom: 20px;
-          display: table;
-          width: 100%;
-        }
-        .header-logo, .header-details, .header-contact {
-          display: table-cell;
-          vertical-align: top;
-        }
-        .header-logo { width: 15%; }
-        .header-logo img {
-          height: 70px;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-        }
-        .header-details {
-          width: 65%;
-          text-align: center;
-          vertical-align: middle;
-        }
-        .header-details h1 {
-          color: #800000;
-          margin: 0;
-          font-family: 'Tinos', serif;
-          font-size: 2.4em;
-        }
-        .header-details .since {
-          font-size: 0.5em;
-          font-weight: normal;
-          vertical-align: middle;
-        }
-        .header-details .slogan {
-          margin: 2px 0;
-          font-size: 1.1em;
-          font-family: 'Tinos', serif;
-          font-style: italic;
-          font-weight: bold;
-        }
-        .header-details .address {
-          margin: 5px 0 0 0;
-          font-size: 0.9em;
-          line-height: 1.4;
-          padding-bottom: 8px;
-        }
-        .header-contact {
-          width: 20%;
-          text-align: right;
-        }
-        .header-contact .phone {
-          font-weight: bold;
-          margin: 0;
-        }
-        .header-contact .notice {
-          background: #800000;
-          color: #fff;
-          padding: 5px;
-          margin-top: 5px;
-          font-weight: bold;
-          border-radius: 3px;
-          text-align: center;
-        }
-        .customer-info {
-          font-size: 1.1em;
-          width: 100%;
-          border-collapse: collapse;
-        }
-        .customer-info td {
-          width: 50%;
-          padding: 8px 0;
-        }
-        .customer-info .detail-value {
-          border-bottom: 1px dotted #000;
-          padding-left: 10px;
-          padding-bottom: 6px;
-          display: inline-block;
-          min-width: 200px;
-        }
-        .items-table {
-          margin-top: 20px;
-          border: 1px solid #800000;
-          border-collapse: collapse;
-          width: 100%;
-        }
-        .items-table th, .items-table td {
-          border: 1px solid #800000;
-          padding: 10px;
-          vertical-align: top;
-        }
-        .items-table th {
-          background: #f2f2f2;
-        }
-        .items-table tfoot td {
-          background: #f2f2f2;
-          font-weight: bold;
-        }
-        .footer {
-          margin-top: 20px;
-          display: table;
-          width: 100%;
-        }
-        .footer-notes, .footer-signature {
-          display: table-cell;
-          vertical-align: top;
-        }
-        .footer-notes {
-          width: 65%;
-        }
-        .footer-notes .sign-line {
-          border-bottom: 1px dotted #000;
-          width: 200px;
-          display: inline-block;
-          height: 25px;
-        }
-        .footer-notes ul {
-          font-size: 0.8em;
-          padding-left: 20px;
-          margin-top: 10px;
-          list-style-type: disc;
-        }
-        .footer-signature {
-          width: 35%;
-          text-align: center;
-          vertical-align: bottom;
-        }
-        .footer-signature .proprietor-sign {
-          margin-top: 40px;
-          border-bottom: 1px dotted #000;
-          height: 25px;
-        }
-        .footer-signature p {
-          margin: 0;
-        }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .text-left { text-align: left; }
-        .font-bold { font-weight: bold; }
-        .font-italic { font-style: italic; }
-      </style>
-      <div class="receipt-container">
-        <table class="header">
-          <tr>
-            <td class="header-logo">
-              <img src="/logo.jpg" alt="Milin Tailor Logo">
-            </td>
-            <td class="header-details text-center">
-              <h1>MILIN TAILOR <span class="since">Since 1965</span></h1>
-              <p class="slogan font-italic font-bold">We Will Make You Sew Happy !</p>
-              <p class="address">Shop No. 2, Shiv Sai Complex, Opp. Triveni Resi.,<br>Near S.R.P. Group No. 1 (East Gate), Navapura, Vadodara.</p>
-            </td>
-            <td class="header-contact text-right">
-              <p class="phone">M. 94263 69847</p>
-              <div class="notice text-center">SUNDAY CLOSED</div>
-            </td>
-          </tr>
-        </table>
-
-        <table class="customer-info">
-          <tr>
-            <td><strong>Name:</strong><span class="detail-value">${order.customer?.name || order.customer || 'Unknown Customer'}</span></td>
-            <td><strong>Bill No.:</strong><span class="detail-value">${order.id ? order.id.substring(0, 5) : 'N/A'}</span></td>
-          </tr>
-          <tr>
-            <td><strong>Delivery Date:</strong><span class="detail-value">${order.delivery_date ? new Date(order.delivery_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
-            <td><strong>Order Date:</strong><span class="detail-value" style="padding-left: 28px;">${order.order_date ? new Date(order.order_date).toLocaleDateString('en-IN', {day: '2-digit', month: '2-digit', year: 'numeric'}) : 'N/A'}</span></td>
-          </tr>
-        </table>
-
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th class="text-center" style="width: 10%;">Nos.</th>
-              <th class="text-left">Details</th>
-              <th class="text-center" style="width: 10%;">Qty</th>
-              <th class="text-right" style="width: 20%;">Rate</th>
-              <th class="text-right" style="width: 20%;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${order.items && order.items.length > 0 ? 
-              order.items.map((item, index) => {
-                const quantity = item.quantity || 1;
-                const rate = item.price || 0;
-                const amount = quantity * rate;
-                return `
-                  <tr>
-                      <td class="text-center">${index + 1}</td>
-                      <td>${item.product_name || item.name || 'N/A'}</td>
-                      <td class="text-center">${quantity}</td>
-                      <td class="text-right">₹ ${rate.toLocaleString()}</td>
-                      <td class="text-right">₹ ${amount.toLocaleString()}</td>
-                  </tr>
-                `;
-              }).join('') : 
-              `<tr>
-                  <td class="text-center">1</td>
-                  <td colspan="4" class="text-center">No items specified</td>
-              </tr>`
-            }
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="4" class="text-center">Thanks !!! Visit Again</td>
-              <td class="text-right">TOTAL: ₹ ${(order.total_amount || 0).toLocaleString()}</td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <table class="footer">
-          <tr>
-            <td class="footer-notes">
-              <p class="font-bold">Receiver Sign:</p>
-              <div class="sign-line"></div>
-              <ul>
-                <li>No complain will be entertained in any hazardous situations.</li>
-                <li>Plz. check fitting of your clothes at the time of Delivery.</li>
-                <li>No Complain will be fulfilled after 90 days from Delivery date.</li>
-                <li>Subject to Vadodara Jurisdiction only.</li>
-              </ul>
-            </td>
-            <td class="footer-signature text-center">
-              <p style="margin-top: 40px;">For MILIN TAILOR</p>
-              <p class="proprietor-sign">&nbsp;</p>
-              <p class="font-bold">Proprietor</p>
-            </td>
-          </tr>
-        </table>
-      </div>
-    `;
-
+    receiptElement.style.position = 'absolute';
+    receiptElement.style.left = '-9999px';
+    receiptElement.innerHTML = receiptHTML;
     document.body.appendChild(receiptElement);
 
-    const canvas = await html2canvas(receiptElement, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
+    const receiptContent = receiptElement.querySelector('.receipt-container');
 
-    const pdf = new jsPDF();
-    pdf.addImage(imgData, 'PNG', 10, 10, 180, 0);
-    const customerName = (order.customer?.name || order.customer || 'Unknown_Customer').replace(/[^a-zA-Z0-9]/g, '_');
-    const orderId = order.id ? order.id.substring(0, 8) : 'N_A';
-    pdf.save(`${customerName}_${orderId}.pdf`);
+    if (receiptContent) {
+      try {
+        const canvas = await html2canvas(receiptContent, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
+
+        const pdf = new jsPDF();
+        pdf.addImage(imgData, 'PNG', 10, 10, 180, 0);
+        const customerName = formatCustomerName(order.customer).replace(/[^a-zA-Z0-9]/g, '_');
+        const orderId = order.id ? order.id.substring(0, 8) : 'N_A';
+        pdf.save(`${customerName}_${orderId}.pdf`);
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Failed to generate PDF. Please check the console for details.');
+      }
+    } else {
+      console.error('Could not find .receipt-container element to print.');
+      alert('Failed to generate PDF: receipt content not found.');
+    }
 
     document.body.removeChild(receiptElement);
+  };
+
+  const handleDownloadPDF = async (order) => {
+    await handlePrintReceipt(order);
   };
 
   // eslint-disable-next-line no-unused-vars
@@ -758,8 +1005,8 @@ const handleDownloadPDF = async (order) => {
                 <div key={order.id} className="border border-gray-200 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h3 className="text-lg font-bold text-gray-800">{order.customer?.name || order.customer || 'Unknown Customer'}</h3>
-                      <p className="text-sm text-blue-600 font-medium">Order ID: {order.id ? order.id.substring(0, 5) : 'N/A'}</p>
+                      <h3 className="text-lg font-bold text-gray-800">{formatCustomerName(order.customer)}</h3>
+                      <p className="text-sm text-blue-600 font-medium">Order ID: {order.sequence_id || order.id || 'N/A'}</p>
                     </div>
                     <div className="min-w-[120px]">
                       <select
@@ -779,18 +1026,24 @@ const handleDownloadPDF = async (order) => {
                     <p className="text-gray-600 text-sm">Order Date: {formatDate(order.order_date)}</p>
                     <p className="text-gray-800 font-semibold">Total: ₹{(order.total_amount || 0).toLocaleString()}</p>
                   </div>
-                  <div className="flex space-x-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-2">
                     <button 
                       onClick={() => handleReceiptClick(order)}
-                      className="flex-1 flex items-center justify-center px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                      className="flex items-center justify-center px-2 py-2 bg-green-600 text-white text-xs sm:text-sm rounded hover:bg-green-700 transition-colors"
                     >
                       <FaEye className="mr-1" />View/Edit
                     </button>
                     <button 
                       onClick={() => handleViewReceipt(order)}
-                      className="flex-1 flex items-center justify-center px-3 py-2 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
+                      className="flex items-center justify-center px-2 py-2 bg-red-600 text-white text-xs sm:text-sm rounded hover:bg-red-700 transition-colors"
                     >
                       <FaReceipt className="mr-1" />View Receipt
+                    </button>
+                    <button 
+                      onClick={() => handleMeasurementPdfPreview(order)}
+                      className="flex items-center justify-center px-2 py-2 bg-blue-600 text-white text-xs sm:text-sm rounded hover:bg-blue-700 transition-colors"
+                    >
+                      <FaPrint className="mr-1" />Print Size
                     </button>
                   </div>
                 </div>
@@ -837,6 +1090,31 @@ const handleDownloadPDF = async (order) => {
           onDownloadPDF={handleDownloadPDF}
         />
       )}
+
+      {isMeasurementPreviewOpen && orderToMeasure && (
+        <MeasurementPreviewModal 
+          order={orderToMeasure}
+          onClose={() => setIsMeasurementPreviewOpen(false)}
+          onPrint={() => {
+            handlePrintMeasurement(orderToMeasure);
+            setIsMeasurementPreviewOpen(false);
+          }}
+        />
+      )}
+
+      {isMeasurementPdfPreviewOpen && measurementPdfData && (
+        <MeasurementPdfPreviewModal 
+          pdfData={measurementPdfData}
+          onClose={() => {
+            setIsMeasurementPdfPreviewOpen(false);
+            setMeasurementPdfData(null);
+          }}
+          onDownload={() => {
+            const { pdf, customerName, orderId } = measurementPdfData;
+            pdf.save(`${customerName.replace(/[^a-zA-Z0-9]/g, '_')}_${orderId}_measurements.pdf`);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -849,7 +1127,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
     customer_phone: order.customer?.phone || order.customer_phone || '',
     customer_email: order.customer?.email || order.customer_email || '',
     customer_address: order.customer?.address || order.customer_address || '',
-    items: order.items || [],
+receipt_data: typeof order.receipt_data === 'string' ? JSON.parse(order.receipt_data) : order.receipt_data || [],
     measurements: order.measurements || []
   });
   const [loading, setSaving] = useState(false);
@@ -914,7 +1192,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
   const addItem = () => {
     setEditedOrder(prev => ({
       ...prev,
-      items: [...prev.items, { product_name: '', quantity: 1, price: 0 }]
+      items: [...prev.items, { item_name: '', item_quantity: 1, price: 0 }]
     }));
   };
 
@@ -1021,63 +1299,83 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
         <div className="p-6">
           <div className={`grid ${isEditing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'} gap-8`}>
             
-            {/* Customer Information */}
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h3 className="text-xl font-semibold mb-4 text-gray-800">Customer Information</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
+            {/* Customer Information - Mobile & PC Responsive */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 rounded-xl shadow-sm border border-blue-100">
+              <div className="flex items-center mb-4 sm:mb-6">
+                <div className="bg-blue-500 p-2 rounded-lg mr-3">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-800">Customer Information</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Customer Name</label>
                   {isEditing ? (
                     <input
                       type="text"
                       value={editedOrder.customer_name}
                       onChange={(e) => handleInputChange('customer_name', e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 sm:p-4 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base font-medium bg-white shadow-sm hover:shadow-md"
+                      placeholder="Enter customer name"
                     />
                   ) : (
-                    <p className="text-gray-900 font-medium">{currentOrder.customer?.name || currentOrder.customer || 'Unknown Customer'}</p>
+                    <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
+                      <p className="text-gray-900 font-semibold text-sm sm:text-base">{formatCustomerName(currentOrder.customer)}</p>
+                    </div>
                   )}
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Number</label>
                   {isEditing ? (
                     <input
                       type="tel"
                       value={editedOrder.customer_phone}
                       onChange={(e) => handleInputChange('customer_phone', e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 sm:p-4 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base font-medium bg-white shadow-sm hover:shadow-md"
+                      placeholder="Enter phone number"
                     />
                   ) : (
-                    <p className="text-gray-900">{currentOrder.customer?.phone || currentOrder.customer_phone || 'N/A'}</p>
+                    <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
+                      <p className="text-gray-900 font-medium text-sm sm:text-base break-all">{currentOrder.customer?.phone || currentOrder.customer_phone || 'N/A'}</p>
+                    </div>
                   )}
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
                   {isEditing ? (
                     <input
                       type="email"
                       value={editedOrder.customer_email}
                       onChange={(e) => handleInputChange('customer_email', e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 sm:p-4 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base font-medium bg-white shadow-sm hover:shadow-md"
+                      placeholder="Enter email address"
                     />
                   ) : (
-                    <p className="text-gray-900">{currentOrder.customer?.email || currentOrder.customer_email || 'N/A'}</p>
+                    <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
+                      <p className="text-gray-900 font-medium text-sm sm:text-base break-all">{currentOrder.customer?.email || currentOrder.customer_email || 'N/A'}</p>
+                    </div>
                   )}
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Address</label>
                   {isEditing ? (
                     <textarea
                       value={editedOrder.customer_address}
                       onChange={(e) => handleInputChange('customer_address', e.target.value)}
-                      rows="3"
-                      className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      rows="4"
+                      className="w-full p-3 sm:p-4 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm sm:text-base font-medium bg-white shadow-sm hover:shadow-md resize-none"
+                      placeholder="Enter customer address"
                     />
                   ) : (
-                    <p className="text-gray-900">{currentOrder.customer?.address || currentOrder.customer_address || 'N/A'}</p>
+                    <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm min-h-[100px]">
+                      <p className="text-gray-900 font-medium text-sm sm:text-base leading-relaxed">{currentOrder.customer?.address || currentOrder.customer_address || 'N/A'}</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1089,7 +1387,7 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Order ID</label>
-                  <p className="text-gray-900 font-mono">{currentOrder.id || 'N/A'}</p>
+                  <p className="text-gray-900 font-mono">${currentOrder.sequence_id || currentOrder.id || 'N/A'}</p>
                 </div>
                 
                 <div>
@@ -1165,12 +1463,12 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                       {isEditing ? (
                         <input
                           type="text"
-                          value={item.product_name || item.name || ''}
-                          onChange={(e) => handleItemChange(index, 'product_name', e.target.value)}
+                          value={item.item_name || item.product_name || item.name || ''}
+                          onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
                           className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-gray-900">{item.product_name || item.name || 'N/A'}</p>
+                        <p className="text-gray-900">{item.item_name || item.product_name || item.name || 'N/A'}</p>
                       )}
                     </div>
                     
@@ -1180,12 +1478,12 @@ const ReceiptModal = ({ order, onClose, onPrint, onOrderUpdate }) => {
                         <input
                           type="number"
                           min="1"
-                          value={item.quantity || 1}
-                          onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value))}
+                          value={item.item_quantity || item.quantity || 1}
+                          onChange={(e) => handleItemChange(index, 'item_quantity', parseInt(e.target.value))}
                           className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       ) : (
-                        <p className="text-gray-900">{item.quantity || 1}</p>
+                        <p className="text-gray-900">{item.item_quantity || item.quantity || 1}</p>
                       )}
                     </div>
                     
@@ -1318,6 +1616,9 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
     });
   };
 
+  // Get items using the helper function
+  const orderItems = getOrderItems(order);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1380,13 +1681,13 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
               <div className="mb-2">
                 <strong>Name:</strong>
                 <span className="ml-1 sm:ml-2 px-1 sm:px-2 pb-1 sm:pb-2 inline-block min-w-[120px] sm:min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
-                  {order.customer?.name || order.customer || 'Unknown Customer'}
+                  {formatCustomerName(order.customer)}
                 </span>
               </div>
               <div className="mb-2">
                 <strong>Bill No.:</strong>
                 <span className="ml-1 sm:ml-2 px-1 sm:px-2 pb-1 sm:pb-2 inline-block min-w-[120px] sm:min-w-[150px]" style={{borderBottom: '1px dotted black'}}>
-                  {order.id ? order.id.substring(0, 5) : 'N/A'}
+                  {order.sequence_id || order.id || 'N/A'}
                 </span>
               </div>
               <div className="mb-2">
@@ -1407,26 +1708,26 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
             <div className="overflow-x-auto mt-5">
               {/* Mobile Card View (sm and below) */}
               <div className="block sm:hidden space-y-3">
-                {order.items && order.items.length > 0 ? (
-                  order.items.map((item, index) => {
-                    const quantity = item.quantity || 1;
+                {orderItems && orderItems.length > 0 ? (
+                  orderItems.map((item, index) => {
+                    const quantity = item.item_quantity || item.quantity || 1;
                     const rate = item.price || 0;
-                    const amount = quantity * rate;
+                    const amount = rate; // Display the entered price directly
                     return (
                       <div key={index} className="border-2 border-red-900 rounded p-3 bg-gray-50">
                         <div className="flex justify-between items-start mb-2">
-                          <span className="text-sm font-bold text-red-900">#{index + 1}</span>
-                          <span className="text-lg font-bold text-red-900">₹ {amount.toLocaleString()}</span>
+                          <span className="text-sm font-bold text-red-900">#${index + 1}</span>
+                          <span className="text-lg font-bold text-red-900">₹ ${amount.toLocaleString()}</span>
                         </div>
-                        <div className="text-base font-semibold mb-2">{item.product_name || item.name || 'N/A'}</div>
+                        <div className="text-base font-semibold mb-2">${item.item_name || item.product_name || item.name || 'N/A'}</div>
                         <div className="flex justify-between text-sm">
                           <div>
                             <span className="text-gray-600">Qty: </span>
-                            <span className="font-medium">{quantity}</span>
+                            <span className="font-medium">${quantity}</span>
                           </div>
                           <div>
                             <span className="text-gray-600">Rate: </span>
-                            <span className="font-medium">₹ {rate.toLocaleString()}</span>
+                            <span className="font-medium">₹ ${rate.toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
@@ -1440,7 +1741,7 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
                 {/* Mobile Total */}
                 <div className="border-2 border-red-900 rounded p-4 bg-red-900 text-white text-center font-bold">
                   <div className="text-sm mb-1">Thanks !!! Visit Again</div>
-                  <div className="text-lg">TOTAL: ₹ {(order.total_amount || 0).toLocaleString()}</div>
+                  <div className="text-lg">TOTAL: ₹ ${(order.total_amount || 0).toLocaleString()}</div>
                 </div>
               </div>
 
@@ -1456,56 +1757,52 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {order.items && order.items.length > 0 ? (
-                    order.items.map((item, index) => {
-                      const quantity = item.quantity || 1;
+                  {orderItems && orderItems.length > 0 ? (
+                    orderItems.map((item, index) => {
+                      const quantity = item.item_quantity || item.quantity || 1;
                       const rate = item.price || 0;
-                      const amount = quantity * rate;
+                      const amount = rate;
                       return (
                         <tr key={index}>
-                          <td className="border border-red-900 p-2 text-center text-sm">{index + 1}</td>
-                          <td className="border border-red-900 p-2 text-sm">{item.product_name || item.name || 'N/A'}</td>
-                          <td className="border border-red-900 p-2 text-center text-sm">{quantity}</td>
-                          <td className="border border-red-900 p-2 text-right text-sm">₹ {rate.toLocaleString()}</td>
-                          <td className="border border-red-900 p-2 text-right text-sm">₹ {amount.toLocaleString()}</td>
+                          <td className="border border-red-900 p-2 text-center">{index + 1}</td>
+                          <td className="border border-red-900 p-2">{item.item_name || item.product_name || item.name || 'N/A'}</td>
+                          <td className="border border-red-900 p-2 text-center">{quantity}</td>
+                          <td className="border border-red-900 p-2 text-right">₹ {rate.toLocaleString()}</td>
+                          <td className="border border-red-900 p-2 text-right">₹ {amount.toLocaleString()}</td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr>
-                      <td className="border border-red-900 p-2 text-center text-sm">1</td>
-                      <td className="border border-red-900 p-2 text-center text-sm" colSpan="4">No items specified</td>
+                      <td className="border border-red-900 p-2 text-center">1</td>
+                      <td className="border border-red-900 p-2" colSpan="4">No items specified</td>
                     </tr>
                   )}
                 </tbody>
-                <tfoot className="bg-gray-100 font-bold">
-                  <tr>
-                    <td className="border border-red-900 p-2 text-center text-sm" colSpan="4">
-                      Thanks !!! Visit Again
-                    </td>
-                    <td className="border border-red-900 p-2 text-right text-sm">
-                      TOTAL: ₹ {(order.total_amount || 0).toLocaleString()}
-                    </td>
+                <tfoot>
+                  <tr className="bg-gray-100">
+                    <td className="border border-red-900 p-2 text-center font-bold" colSpan="4">Thanks !!! Visit Again</td>
+                    <td className="border border-red-900 p-2 text-right font-bold">TOTAL: ₹ {(order.total_amount || 0).toLocaleString()}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
 
             {/* Footer */}
-            <div className="flex mt-5">
-              <div className="flex-1">
-                <p className="font-bold mb-1">Receiver Sign:</p>
-                <div className="inline-block w-48 mb-2" style={{borderBottom: '1px dotted black', height: '25px'}}></div>
-                <ul className="text-sm space-y-1 mt-3">
-                  <li>• No complain will be entertained in any hazardous situations.</li>
-                  <li>• Plz. check fitting of your clothes at the time of Delivery.</li>
-                  <li>• No Complain will be fulfilled after 90 days from Delivery date.</li>
-                  <li>• Subject to Vadodara Jurisdiction only.</li>
-                </ul>
+            <div className="flex flex-col sm:flex-row justify-between mt-5 pt-5 border-t-2 border-red-900 text-xs sm:text-sm">
+              <div className="mb-4 sm:mb-0">
+                <p className="font-bold">Receiver Sign:</p>
+                <div className="mt-10 border-b-2 border-dotted border-black w-40"></div>
               </div>
-              <div className="w-1/3 text-center">
-                <p className="mt-10">For MILIN TAILOR</p>
-                <div className="mt-10 mb-2" style={{borderBottom: '1px dotted black', height: '25px'}}></div>
+              <ul className="list-disc list-inside text-gray-700 space-y-1">
+                <li>No complain will be entertained in any hazardous situations.</li>
+                <li>Plz. check fitting of your clothes at the time of Delivery.</li>
+                <li>No Complain will be fulfilled after 90 days from Delivery date.</li>
+                <li>Subject to Vadodara Jurisdiction only.</li>
+              </ul>
+              <div className="text-center mt-4 sm:mt-0">
+                <p className="mt-10 font-bold">For MILIN TAILOR</p>
+                <div className="mt-10 border-b-2 border-dotted border-black w-40"></div>
                 <p className="font-bold">Proprietor</p>
               </div>
             </div>
@@ -1515,6 +1812,5 @@ const PrintPreviewModal = ({ order, onClose, onPrint, onDownloadPDF }) => {
     </div>
   );
 };
-
 
 export default Orders;

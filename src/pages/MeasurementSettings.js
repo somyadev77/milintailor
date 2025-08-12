@@ -43,23 +43,13 @@ const MeasurementSettings = () => {
   ];
 
   const categories = [
-    { value: 'body', label: 'Body Measurements' },
-    { value: 'garment', label: 'Garment Specifications' },
-    { value: 'style', label: 'Style Preferences' },
-    { value: 'other', label: 'Other' }
+    { value: 'shirt', label: 'Shirt Measurements' },
+    { value: 'pant', label: 'Pant Measurements' },
+    { value: 'custom', label: 'Custom Measurements' }
   ];
 
-  // Default measurement fields that cannot be deleted
-  const defaultFields = [
-    { name: 'chest', label: 'Chest', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'waist', label: 'Waist', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'hip', label: 'Hip', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'shoulder', label: 'Shoulder', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'sleeveLength', label: 'Sleeve Length', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'neckSize', label: 'Neck Size', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'inseam', label: 'Inseam', type: 'number', unit: 'inches', category: 'body', isDefault: true },
-    { name: 'outseam', label: 'Outseam', type: 'number', unit: 'inches', category: 'body', isDefault: true }
-  ];
+  // No default measurement fields - only shirt, pant, and custom measurements will be used
+  const defaultFields = [];
 
   useEffect(() => {
     loadCustomFields();
@@ -200,7 +190,7 @@ const MeasurementSettings = () => {
         type: 'number',
         unit: globalSettings.defaultUnit,
         required: false,
-        category: 'body'
+        category: 'custom'
       });
       setIsAddingField(false);
     } catch (err) {
@@ -419,26 +409,23 @@ const MeasurementSettings = () => {
         </div>
       </div>
 
-      {/* Default Fields Section */}
+      {/* Available Measurement Categories */}
       <div className="mb-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Default Measurement Fields</h2>
-        <div className="bg-white rounded-lg shadow">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
-            {defaultFields.map(field => (
-              <div key={field.name} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-medium text-gray-900">{field.label}</h3>
-                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                    Default
-                  </span>
-                </div>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <div>Type: {field.type}</div>
-                  <div>Unit: {field.unit}</div>
-                  <div>Category: {field.category}</div>
-                </div>
-              </div>
-            ))}
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Available Measurement Categories</h2>
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+              <h3 className="font-medium text-blue-900 mb-2">👔 Shirt Measurements</h3>
+              <p className="text-sm text-blue-700">Length, Shoulder, Sleeve, Sleeve Loose, Chest, Waist, Collar</p>
+            </div>
+            <div className="border border-green-200 rounded-lg p-4 bg-green-50">
+              <h3 className="font-medium text-green-900 mb-2">👖 Pant Measurements</h3>
+              <p className="text-sm text-green-700">Length, Waist, Seat/Hips, Thigh Loose, Knee Loose, Bottom</p>
+            </div>
+            <div className="border border-purple-200 rounded-lg p-4 bg-purple-50">
+              <h3 className="font-medium text-purple-900 mb-2">🎨 Custom Measurements</h3>
+              <p className="text-sm text-purple-700">Add any additional measurements as needed</p>
+            </div>
           </div>
         </div>
       </div>

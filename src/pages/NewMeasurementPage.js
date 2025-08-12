@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { measurementService } from '../services/measurementService';
 import { customerService } from '../services/customerService';
+import { measurementService } from '../services/measurementService';
+import { getAllMeasurementFieldsFlat } from '../services/measurementFieldsService';
+import { getAllMeasurementFields as getStaticMeasurementFields } from '../config/measurementFields';
 import { FaSave, FaTimes, FaRuler, FaSpinner, FaArrowLeft } from 'react-icons/fa';
-
+import ButtonColorSelector from '../components/ButtonColorSelector';
 const NewMeasurementPage = () => {
   const { customerId } = useParams();
   const navigate = useNavigate();
@@ -13,25 +15,8 @@ const NewMeasurementPage = () => {
   const [formData, setFormData] = useState({});
   const [errors, setErrors] = useState({});
 
-  // Basic measurement fields
-  const measurementFields = [
-    { name: 'chest', label: 'Chest', unit: 'inches', required: false },
-    { name: 'waist', label: 'Waist', unit: 'inches', required: false },
-    { name: 'shoulder', label: 'Shoulder', unit: 'inches', required: false },
-    { name: 'sleeve_length', label: 'Sleeve Length', unit: 'inches', required: false },
-    { name: 'shirt_length', label: 'Shirt Length', unit: 'inches', required: false },
-    { name: 'collar', label: 'Collar', unit: 'inches', required: false },
-    { name: 'hip', label: 'Hip', unit: 'inches', required: false },
-    { name: 'inseam', label: 'Inseam', unit: 'inches', required: false },
-    { name: 'outseam', label: 'Outseam', unit: 'inches', required: false },
-    { name: 'thigh', label: 'Thigh', unit: 'inches', required: false },
-    { name: 'knee', label: 'Knee', unit: 'inches', required: false },
-    { name: 'bottom', label: 'Bottom', unit: 'inches', required: false },
-    { name: 'bust', label: 'Bust', unit: 'inches', required: false },
-    { name: 'neck', label: 'Neck', unit: 'inches', required: false },
-    { name: 'blouse_length', label: 'Blouse Length', unit: 'inches', required: false },
-    { name: 'skirt_length', label: 'Skirt Length', unit: 'inches', required: false }
-  ];
+  // Use static measurement fields from config
+  const measurementFields = getStaticMeasurementFields();
 
   useEffect(() => {
     const loadCustomer = async () => {
@@ -97,7 +82,7 @@ const NewMeasurementPage = () => {
     measurementFields.forEach(field => {
       if (field.required && (!formData[field.name] || formData[field.name].toString().trim() === '')) {
         newErrors[field.name] = `${field.label} is required`;
-      } else if (formData[field.name] && isNaN(formData[field.name])) {
+      } else if (formData[field.name] && field.type !== 'select' && isNaN(formData[field.name])) {
         newErrors[field.name] = `${field.label} must be a valid number`;
       }
     });
@@ -119,15 +104,15 @@ const NewMeasurementPage = () => {
       const measurementData = {};
       measurementFields.forEach(field => {
         const value = formData[field.name];
-        if (value !== '' && value !== null && value !== undefined && value !== '0') {
+        if (value !== '' && value !== null && value !== undefined) {
           measurementData[field.name] = {
-            value: parseFloat(value),
-            unit: field.unit || 'inches'
+            value: field.type === 'select' ? value : parseFloat(value),
+            unit: field.unit || (field.type === 'select' ? '' : 'inches')
           };
         } else {
           measurementData[field.name] = {
             value: null,
-            unit: field.unit || 'inches'
+            unit: field.unit || (field.type === 'select' ? '' : 'inches')
           };
         }
       });
@@ -201,51 +186,128 @@ const NewMeasurementPage = () => {
             </Link>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Measurement Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {measurementFields.map((field) => {
-                const hasValue = formData[field.name] && formData[field.name] !== '' && formData[field.name] !== '0';
-                return (
-                  <div key={field.name} className={`relative ${hasValue ? 'bg-green-50 border border-green-200 rounded-lg p-3' : ''}`}>
-                    <label 
-                      htmlFor={field.name} 
-                      className="block text-sm font-medium text-gray-700 mb-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>
-                          {field.label} {field.required && <span className="text-red-500">*</span>}
-                          {field.unit && <span className="text-gray-500 ml-1">({field.unit})</span>}
-                        </span>
-                        {hasValue && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                            ✓ Filled
-                          </span>
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Button Color Section - Third separate section */}
+            {measurementFields
+              .filter((field) => field.category === 'button')
+              .map((field) => (
+                <ButtonColorSelector
+                  key={field.name}
+                  name={field.name}
+                  label={field.label}
+                  value={formData[field.name] || ''}
+                  onChange={handleChange}
+                  options={field.options}
+                />
+              ))}
+
+            {/* Shirt and Pant Measurements in Two Columns */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Shirt Column */}
+              <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center">
+                  👕 Shirt Measurements
+                </h3>
+                <div className="space-y-4">
+                  {measurementFields
+                    .filter((field) => field.category === 'shirt')
+                    .map((field) => {
+                      const hasValue = formData[field.name] && formData[field.name] !== '' && formData[field.name] !== '0';
+                      return (
+                      <div key={field.name} className={`relative ${hasValue ? 'bg-green-50 border border-green-200 rounded-lg p-3' : ''}`}>
+                        <label 
+                          htmlFor={field.name} 
+                          className="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                              {field.unit && <span className="text-gray-500 ml-1">({field.unit})</span>}
+                            </span>
+                            {hasValue && (
+                              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                                ✓ Filled
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          id={field.name}
+                          name={field.name}
+                          value={formData[field.name] || ''}
+                          onChange={handleChange}
+                          className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                            errors[field.name] 
+                              ? 'border-red-500 bg-red-50' 
+                              : hasValue 
+                                ? 'border-green-300 bg-green-50 font-semibold'
+                                : 'border-gray-300 hover:border-gray-400 bg-white'
+                          }`}
+                          placeholder={`Enter ${field.label.toLowerCase()}${hasValue ? '' : ' (optional)'}`}
+                        />
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
                         )}
                       </div>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      id={field.name}
-                      name={field.name}
-                      value={formData[field.name] || ''}
-                      onChange={handleChange}
-                      className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 ${
-                        errors[field.name] 
-                          ? 'border-red-500 bg-red-50' 
-                          : hasValue 
-                            ? 'border-green-300 bg-green-50 font-semibold'
-                            : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                      }`}
-                      placeholder={`Enter ${field.label.toLowerCase()}${hasValue ? '' : ' (optional)'}`}
-                    />
-                    {errors[field.name] && (
-                      <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
-                    )}
-                  </div>
-                );
-              })}
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Pant Column */}
+              <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                <h3 className="text-xl font-bold text-green-800 mb-4 flex items-center">
+                  👖 Pant Measurements
+                </h3>
+                <div className="space-y-4">
+                  {measurementFields
+                    .filter((field) => field.category === 'pant')
+                    .map((field) => {
+                      const hasValue = formData[field.name] && formData[field.name] !== '' && formData[field.name] !== '0';
+                      return (
+                      <div key={field.name} className={`relative ${hasValue ? 'bg-green-100 border border-green-300 rounded-lg p-3' : ''}`}>
+                        <label 
+                          htmlFor={field.name} 
+                          className="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                              {field.unit && <span className="text-gray-500 ml-1">({field.unit})</span>}
+                            </span>
+                            {hasValue && (
+                              <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">
+                                ✓ Filled
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          id={field.name}
+                          name={field.name}
+                          value={formData[field.name] || ''}
+                          onChange={handleChange}
+                          className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 ${
+                            errors[field.name] 
+                              ? 'border-red-500 bg-red-50' 
+                              : hasValue 
+                                ? 'border-green-400 bg-green-100 font-semibold'
+                                : 'border-gray-300 hover:border-gray-400 bg-white'
+                          }`}
+                          placeholder={`Enter ${field.label.toLowerCase()}${hasValue ? '' : ' (optional)'}`}
+                        />
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-600">{errors[field.name]}</p>
+                        )}
+                      </div>
+                      );
+                    })}
+                </div>
+              </div>
             </div>
 
             {/* Summary */}

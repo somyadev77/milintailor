@@ -1,0 +1,34 @@
+/* Global styles for the application */
+
+/* Disable mouse wheel scroll on number inputs to prevent accidental value changes */
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox: Hide spinner arrows */
+}
+
+/* Chrome, Safari, Edge: Hide spinner arrows */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Disable mouse wheel events on number inputs when they have focus */
+input[type="number"]:focus {
+  pointer-events: none;
+}
+
+/* Re-enable pointer events on number inputs when not focused */
+input[type="number"]:not(:focus) {
+  pointer-events: auto;
+}
+
+/* Alternative approach: Use a class-based solution for better control */
+.no-scroll-input {
+  -moz-appearance: textfield;
+}
+
+.no-scroll-input::-webkit-outer-spin-button,
+.no-scroll-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

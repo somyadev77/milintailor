@@ -50,7 +50,7 @@ const SyncStatus = () => {
 
   const checkPendingItems = async () => {
     try {
-      const tables = ['customers', 'orders', 'measurements', 'measurement_templates'];
+      const tables = ['customers', 'orders', 'measurements'];
       let total = 0;
 
       for (const table of tables) {

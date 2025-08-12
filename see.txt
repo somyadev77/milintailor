@@ -1,0 +1,26 @@
+Subject: Project Briefing & The Golden Rule for All Changes
+Hello,
+
+The application we are working on is already built. Your job is to help me make modifications and add new features. Before we begin, you must understand the core idea of the app and the single most important rule for writing any code.
+
+The Idea: An Offline-First Tailoring App
+The project is a "Tailoring Business Management System" for tailors to digitally manage their customers, orders, and measurements.
+
+The most critical feature of this app is its offline-first architecture. It is designed to work perfectly in a shop with unreliable internet. This is not an optional feature; it is the foundation of the entire application.
+
+The Golden Rule: All Changes Must Work Online AND Offline
+For every single task I give you, your solution must work in both scenarios. This is how our app is built:
+
+All actions happen locally first: When a user creates, edits, or deletes anything, the change is saved immediately to the local IndexedDB in the browser. This makes the app feel instant.
+
+Syncing happens in the background: A sync manager sends these local changes to the main Supabase database only when an internet connection is available.
+
+The UI always reads from local data: To ensure the app works offline, the user interface always displays the data from the local IndexedDB.
+
+Therefore, for any change you make:
+
+If you are saving data: Your code must write to the local IndexedDB and mark it for syncing.
+
+If you are displaying data: Your code must read from the local IndexedDB.
+
+Do not write any code that assumes the user is always online. Every change must respect this offline-first architecture.

@@ -1,10 +1,96 @@
-✅ FIXED: Mobile responsiveness issues have been resolved:
-1. Customer Detail page - Now mobile-friendly with responsive layout, stacked buttons, and proper spacing
-2. Order viewing - Modal buttons now stack vertically on mobile, preventing overflow
-3. Order receipt viewing - Mobile-responsive layout implemented
-4. All website elements are now optimized for mobile devices with:
-   - Responsive text sizes (text-lg sm:text-xl, text-2xl sm:text-3xl)
-   - Flexible button layouts (flex-col sm:flex-row)
-   - Mobile-friendly spacing and padding
-   - Touch-friendly interactive elements
-   - Proper mobile navigation and controls
+create table public.orders (
+  id uuid not null default gen_random_uuid (),
+  customer_id uuid null,
+  order_date timestamp with time zone null default now(),
+  delivery_date date null,
+  remind_date date null,
+  total_amount numeric(10, 2) null default 0,
+  advance_payment numeric(10, 2) null default 0,
+  status character varying(50) null default 'Pending'::character varying,
+  is_urgent boolean null default false,
+  notes text null,
+  receipt_data jsonb null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  sequence_id serial not null,
+  item_name text null,
+  item_quantity integer null default 1,
+  constraint orders_pkey primary key (id),
+  constraint orders_sequence_id_key unique (sequence_id),
+  constraint orders_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete set null,
+  constraint orders_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'Pending'::character varying,
+            'In-Progress'::character varying,
+            'Completed'::character varying,
+            'Delivered'::character varying,
+            'Cancelled'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_customer_id on public.orders using btree (customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_status on public.orders using btree (status) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_order_date on public.orders using btree (order_date) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_delivery_date on public.orders using btree (delivery_date) TABLESPACE pg_default;
+
+create trigger set_updated_at BEFORE
+update on orders for EACH row
+execute FUNCTION handle_updated_at ();
+
+
+
+create table public.measurements (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  customer_id uuid null,
+  template_name character varying(255) null,
+  data jsonb null,
+  sync_status character varying(50) null default 'synced'::character varying,
+  created_at timestamp with time zone null default CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone null default CURRENT_TIMESTAMP,
+  constraint measurements_pkey primary key (id),
+  constraint measurements_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_measurements_customer_id on public.measurements using btree (customer_id) TABLESPACE pg_default;
+
+
+
+
+create table public.measurement_fields (
+  id uuid not null default gen_random_uuid (),
+  user_id uuid not null,
+  field_name text not null,
+  created_at timestamp with time zone null default now(),
+  constraint measurement_fields_pkey primary key (id),
+  constraint measurement_fields_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+
+
+
+
+
+create table public.customers (
+  id uuid not null default gen_random_uuid (),
+  user_id uuid null default extensions.uuid_generate_v4 (),
+  name text not null,
+  phone text null,
+  email text null,
+  address text null,
+  measurements jsonb null,
+  created_at timestamp with time zone null default now(),
+  sync_status character varying(50) null default 'synced'::character varying,
+  updated_at timestamp without time zone null default now(),
+  post text null,
+  constraint customers_pkey primary key (id)
+) TABLESPACE pg_default;

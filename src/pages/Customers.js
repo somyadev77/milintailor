@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { customerService } from '../services/customerService';
 import { Link } from 'react-router-dom';
 import { FaPlus, FaEdit, FaTrash, FaSearch, FaEye, FaUser, FaPhone, FaEnvelope, FaMapMarkerAlt, FaSpinner, FaUsers, FaFilter } from 'react-icons/fa';
+import { formatCustomerName } from '../utils/customerNameFormatter';
 
 function Customers() {
   const [customers, setCustomers] = useState([]);
@@ -13,6 +14,18 @@ function Customers() {
 
   useEffect(() => {
     fetchCustomers();
+    
+    // Listen for app sync completion to refresh data
+    const handleAppSyncComplete = () => {
+      console.log('📱 App sync completed - refreshing customers data...');
+      fetchCustomers();
+    };
+    
+    window.addEventListener('appSyncComplete', handleAppSyncComplete);
+    
+    return () => {
+      window.removeEventListener('appSyncComplete', handleAppSyncComplete);
+    };
   }, []);
 
   // Refresh data when component becomes visible (user returns from edit)
@@ -241,7 +254,7 @@ function Customers() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        {customer.name}
+                        {formatCustomerName(customer)}
                       </h3>
                       <p className="text-sm text-gray-500">Customer</p>
                     </div>

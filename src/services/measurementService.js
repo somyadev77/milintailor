@@ -68,42 +68,8 @@ export const measurementService = {
         }
       }
       
-      // If we have multiple template types, merge them into Universal Measurements
-      if (measurements.length > 1) {
-        const mergedData = {};
-        let latestDate = null;
-        let latestId = null;
-        
-        // Merge all measurement data from different templates
-        measurements.forEach(measurement => {
-          if (measurement.data && typeof measurement.data === 'object') {
-            Object.assign(mergedData, measurement.data);
-          }
-          
-          // Track the most recent measurement
-          const measurementDate = new Date(measurement.updated_at || measurement.created_at);
-          if (!latestDate || measurementDate > latestDate) {
-            latestDate = measurementDate;
-            latestId = measurement.id;
-          }
-        });
-        
-        // Return a single unified measurement
-        return [{
-          id: latestId,
-          customer_id: customerId,
-          template_name: UNIVERSAL_TEMPLATE_NAME,
-          data: mergedData,
-          created_at: measurements[0].created_at,
-          updated_at: latestDate.toISOString()
-        }];
-      }
-      
-      // Ensure the template name is always 'Universal Measurements'
-      return measurements.map(measurement => ({
-        ...measurement,
-        template_name: UNIVERSAL_TEMPLATE_NAME
-      }));
+      // Return measurements with their actual template names (don't force Universal Measurements)
+      return measurements;
     } catch (error) {
       console.error('Error fetching customer measurements:', error);
       return [];
@@ -128,56 +94,78 @@ export const measurementService = {
     }
   },
 
-  // Add or update measurement for a customer (always uses Universal Measurements)
-  async saveForCustomer(customerId, templateName = null, measurementData) {
+  // Add or update measurement for a customer
+  // Supports both saveForCustomer(customerId, measurementData) and saveForCustomer(customerId, templateName, measurementData)
+  async saveForCustomer(customerId, templateNameOrData, measurementData = null) {
     try {
-      // Always use Universal Measurements template name
-      const standardTemplateName = UNIVERSAL_TEMPLATE_NAME;
+      // Handle both API signatures for backward compatibility
+      let actualTemplateName, actualMeasurementData;
       
-      // Get any existing measurement (regardless of template name)
+      if (measurementData === null) {
+        // Called as saveForCustomer(customerId, measurementData)
+        actualTemplateName = UNIVERSAL_TEMPLATE_NAME;
+        actualMeasurementData = templateNameOrData;
+      } else {
+        // Called as saveForCustomer(customerId, templateName, measurementData)
+        actualTemplateName = templateNameOrData || UNIVERSAL_TEMPLATE_NAME;
+        actualMeasurementData = measurementData;
+      }
+      
+      // Validate that measurement data is an object, not a string
+      if (typeof actualMeasurementData === 'string') {
+        console.error('❌ Measurement data cannot be a string:', actualMeasurementData);
+        throw new Error('Measurement data must be an object, not a string');
+      }
+      
+      if (!actualMeasurementData || typeof actualMeasurementData !== 'object') {
+        console.error('❌ Invalid measurement data:', actualMeasurementData);
+        throw new Error('Measurement data must be a valid object');
+      }
+      
+      // Use the actual template name (don't force Universal Measurements)
+      const standardTemplateName = actualTemplateName;
+      
+      // Get existing measurement with the same template name
       const existingMeasurements = await db.measurements
         .where('customer_id')
         .equals(customerId)
-        .and(record => record.sync_status !== 'deleted')
+        .and(record => record.sync_status !== 'deleted' && record.template_name === standardTemplateName)
         .toArray();
       
       if (existingMeasurements.length > 0) {
-        // Update the first/primary measurement and merge data from others
-        const primaryMeasurement = existingMeasurements[0];
-        const mergedData = { ...primaryMeasurement.data };
+        // Update the existing measurement with the same template name
+        const existingMeasurement = existingMeasurements[0];
+        const mergedData = { ...existingMeasurement.data };
         
-        // Merge data from all existing measurements
-        existingMeasurements.forEach(measurement => {
-          if (measurement.data && typeof measurement.data === 'object') {
-            Object.assign(mergedData, measurement.data);
-          }
-        });
+        // Validate existing data before merging
+        if (existingMeasurement.data && typeof existingMeasurement.data === 'object') {
+          Object.assign(mergedData, existingMeasurement.data);
+        }
         
-        // Add new measurement data
-        Object.assign(mergedData, measurementData);
+        // Add new measurement data, including custom fields
+        Object.assign(mergedData, actualMeasurementData);
         
-        // Update the primary measurement
-        const updatedMeasurement = await updateRecord('measurements', primaryMeasurement.id, {
+        // Update the measurement
+        const updatedMeasurement = await updateRecord('measurements', existingMeasurement.id, {
           template_name: standardTemplateName,
           data: mergedData,
           updated_at: new Date().toISOString()
         });
         
-        // Delete any other measurements (cleanup multiple templates)
-        for (let i = 1; i < existingMeasurements.length; i++) {
-          await deleteRecord('measurements', existingMeasurements[i].id);
-        }
-        
+        console.log(`✅ Updated ${standardTemplateName} measurement for customer ${customerId}:`, mergedData);
         return updatedMeasurement;
       } else {
-        // Create new Universal Measurements
-        return await addRecord('measurements', {
+        // Create new measurement with the specified template name
+        const newMeasurement = await addRecord('measurements', {
           customer_id: customerId,
           template_name: standardTemplateName,
-          data: measurementData,
+          data: actualMeasurementData,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
+        
+        console.log(`✅ Created new ${standardTemplateName} measurement for customer ${customerId}:`, actualMeasurementData);
+        return newMeasurement;
       }
     } catch (error) {
       console.error('Error saving customer measurement:', error);
